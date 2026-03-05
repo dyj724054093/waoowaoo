@@ -12,6 +12,7 @@ import { Character, CharacterAppearance } from '@/types/project'
 import { shouldShowError } from '@/lib/error-utils'
 import VoiceSettings from './VoiceSettings'
 import { useUploadProjectCharacterImage } from '@/lib/query/mutations'
+import { useCancelTask } from '@/lib/query/mutations/task-mutations'
 import { resolveTaskPresentationState } from '@/lib/task/presentation'
 import TaskStatusInline from '@/components/task/TaskStatusInline'
 import CharacterCardHeader from './character-card/CharacterCardHeader'
@@ -70,6 +71,7 @@ export default function CharacterCard({
 }: CharacterCardProps) {
   // 🔥 使用 mutation
   const uploadImage = useUploadProjectCharacterImage(projectId)
+  const cancelTaskMutation = useCancelTask(projectId)
   const t = useTranslations('assets')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [pendingUploadIndex, setPendingUploadIndex] = useState<number | undefined>(undefined)
@@ -203,6 +205,13 @@ export default function CharacterCard({
   const isAppearanceTaskRunning =
     appearanceTaskRunning ||
     isAnyTaskRunning
+  const canPauseTask = !!appearance.runningTaskId && (appearance.taskPhase === 'queued' || appearance.taskPhase === 'processing')
+  const canRetryTask = !canPauseTask && !isAppearanceTaskRunning && !isAnyTaskRunning && (!!appearance.lastError || appearance.taskPhase === 'failed')
+  const isPausingTask = cancelTaskMutation.isPending
+  const handlePauseTask = () => {
+    if (!appearance.runningTaskId || isPausingTask) return
+    cancelTaskMutation.mutate(appearance.runningTaskId)
+  }
 
   // 注意：不再使用 editingItems，生成/编辑状态统一由任务态 + 实体态提供
 
@@ -465,6 +474,11 @@ export default function CharacterCard({
         isAppearanceTaskRunning={isAppearanceTaskRunning}
         isAnyTaskRunning={isAnyTaskRunning}
         hasDescription={!!appearance.description}
+        canPauseTask={canPauseTask}
+        isPausingTask={isPausingTask}
+        canRetryTask={canRetryTask}
+        onPauseTask={handlePauseTask}
+        onRetryTask={onRegenerate}
         onGenerate={onGenerate}
         voiceSettings={compactVoiceSettings}
       />
