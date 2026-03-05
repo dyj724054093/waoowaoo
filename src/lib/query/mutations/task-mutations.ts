@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '../keys'
@@ -16,7 +16,7 @@ export function useDismissFailedTasks(projectId: string) {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ taskIds }),
                 },
-                '关闭错误失败',
+                '鍏抽棴閿欒澶辫触',
             )
         },
         onSuccess: () => {
@@ -31,11 +31,11 @@ export function useCancelTask(projectId: string) {
     return useMutation({
         mutationFn: async (taskId: string) => {
             return await requestJsonWithError<{ success: boolean; cancelled: boolean }>(
-                /api/tasks/,
+                `/api/tasks/${taskId}`,
                 {
                     method: 'DELETE',
                 },
-                '取消任务失败',
+                '鍙栨秷浠诲姟澶辫触',
             )
         },
         onSettled: async () => {
@@ -48,3 +48,5 @@ export function useCancelTask(projectId: string) {
         },
     })
 }
+
+

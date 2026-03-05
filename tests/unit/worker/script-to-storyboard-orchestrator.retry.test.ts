@@ -103,4 +103,67 @@ describe('script-to-storyboard orchestrator retry', () => {
 
     expect(callCount).toBe(1)
   })
+
+
+  it('uses json repair sub-step when phase output is non-json text', async () => {
+    const actions: string[] = []
+    const runStep = vi.fn(async (_meta, _prompt, action: string) => {
+      actions.push(action)
+
+      if (action === 'storyboard_phase1_plan') {
+        return {
+          text: '[SHOT] narrative note only',
+          reasoning: '',
+        }
+      }
+      if (action === 'storyboard_phase1_plan_json_repair') {
+        return {
+          text: JSON.stringify([{ panel_number: 1, description: 'panel one', location: 'scene A', source_text: 'source text', characters: [] }]),
+          reasoning: '',
+        }
+      }
+
+      if (action === 'storyboard_phase2_cinematography') {
+        return {
+          text: JSON.stringify([{ panel_number: 1, composition: 'center', lighting: 'low', color_palette: 'cold', atmosphere: 'tense', technical_notes: 'static' }]),
+          reasoning: '',
+        }
+      }
+      if (action === 'storyboard_phase2_acting') {
+        return { text: JSON.stringify([{ panel_number: 1, characters: [] }]), reasoning: '' }
+      }
+
+      return {
+        text: JSON.stringify([{ panel_number: 1, description: 'panel one', location: 'scene A', source_text: 'source text', characters: [] }]),
+        reasoning: '',
+      }
+    })
+
+    const result = await runScriptToStoryboardOrchestrator({
+      clips: [
+        {
+          id: 'clip-1',
+          content: 'text',
+          characters: JSON.stringify([{ name: 'RoleA' }]),
+          location: 'scene A',
+          screenplay: null,
+        },
+      ],
+      novelPromotionData: {
+        characters: [{ name: 'RoleA', appearances: [] }],
+        locations: [{ name: 'scene A', images: [] }],
+      },
+      promptTemplates: {
+        phase1PlanTemplate: '{clip_content} {clip_json} {characters_lib_name} {locations_lib_name} {characters_introduction} {characters_appearance_list} {characters_full_description}',
+        phase2CinematographyTemplate: '{panels_json} {panel_count} {locations_description} {characters_info}',
+        phase2ActingTemplate: '{panels_json} {panel_count} {characters_info}',
+        phase3DetailTemplate: '{panels_json} {characters_age_gender} {locations_description}',
+      },
+      runStep,
+    })
+
+    expect(result.summary.clipCount).toBe(1)
+    expect(actions).toContain('storyboard_phase1_plan_json_repair')
+  })
+
 })

@@ -1325,4 +1325,101 @@ describe('script-to-storyboard orchestrator contract', () => {
     expect(result.clipPanels[0]?.finalPanels.map((panel) => panel.panel_number)).toEqual([1, 3])
   })
 
+
+
+  it('accepts wrapped object payloads that contain object arrays', async () => {
+    const runStep = vi.fn(async (_meta, _prompt, action: string) => {
+      if (action === 'storyboard_phase1_plan') {
+        return {
+          text: JSON.stringify({
+            panels: [
+              {
+                panel_number: 1,
+                description: 'phase1 panel',
+                location: 'Street',
+                source_text: 'source text',
+                characters: [{ name: 'Hero' }],
+              },
+            ],
+          }),
+          reasoning: '',
+        }
+      }
+
+      if (action === 'storyboard_phase2_cinematography') {
+        return {
+          text: JSON.stringify({
+            result: {
+              items: [
+                {
+                  panel_number: 1,
+                  composition: 'center',
+                  lighting: 'low key',
+                  color_palette: 'cool',
+                  atmosphere: 'tense',
+                  technical_notes: 'static',
+                },
+              ],
+            },
+          }),
+          reasoning: '',
+        }
+      }
+
+      if (action === 'storyboard_phase2_acting') {
+        return {
+          text: JSON.stringify({
+            output: [
+              {
+                panel_number: 1,
+                characters: [{ name: 'Hero', acting: 'watching' }],
+              },
+            ],
+          }),
+          reasoning: '',
+        }
+      }
+
+      return {
+        text: JSON.stringify({
+          data: [
+            {
+              panel_number: 1,
+              description: 'phase3 panel',
+              location: 'Street',
+              source_text: 'source text',
+              characters: [{ name: 'Hero', appearance: 'default' }],
+              shot_type: 'medium shot',
+              camera_move: 'static',
+              video_prompt: 'hero watches',
+            },
+          ],
+        }),
+        reasoning: '',
+      }
+    })
+
+    const result = await runScriptToStoryboardOrchestrator({
+      clips: [
+        {
+          id: 'clip-1',
+          content: 'Hero enters street.',
+          characters: JSON.stringify([{ name: 'Hero' }]),
+          location: 'Street',
+          screenplay: null,
+        },
+      ],
+      novelPromotionData: {
+        characters: [{ name: 'Hero', appearances: [] }],
+        locations: [{ name: 'Street', images: [] }],
+      },
+      promptTemplates,
+      runStep,
+    })
+
+    expect(result.summary.clipCount).toBe(1)
+    expect(result.summary.totalPanelCount).toBe(1)
+    expect(result.clipPanels[0]?.finalPanels[0]?.source_text).toBe('source text')
+  })
+
 })

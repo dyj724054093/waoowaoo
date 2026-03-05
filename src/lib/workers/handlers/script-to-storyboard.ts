@@ -180,6 +180,10 @@ export async function handleScriptToStoryboardTask(job: Job<TaskJobData>) {
       model,
     })
 
+    const disableReasoningForStoryboardPhase = /^storyboard_phase[123]_/.test(action)
+    const stepReasoning = disableReasoningForStoryboardPhase ? false : reasoning
+    const stepReasoningEffort = disableReasoningForStoryboardPhase ? 'minimal' : reasoningEffort
+
     const output = await executeAiTextStep({
       userId: job.data.userId,
       model,
@@ -188,8 +192,8 @@ export async function handleScriptToStoryboardTask(job: Job<TaskJobData>) {
       action,
       meta,
       temperature,
-      reasoning,
-      reasoningEffort,
+      reasoning: stepReasoning,
+      reasoningEffort: stepReasoningEffort,
     })
 
     // Log AI response output (full raw text included for JSON parse debugging)

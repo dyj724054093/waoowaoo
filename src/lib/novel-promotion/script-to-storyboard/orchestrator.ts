@@ -86,24 +86,42 @@ export class JsonParseError extends Error {
   }
 }
 
+function cleanJsonEnvelope(responseText: string): string {
+  return responseText
+    .trim()
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/, '')
+    .replace(/\s*```$/, '')
+    .trim()
+}
+
 function parseJsonArray<T extends JsonRecord>(responseText: string, label: string): T[] {
-  let jsonText = responseText.trim()
-  jsonText = jsonText.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '')
-
-  if (!jsonText.includes('[') || !jsonText.includes(']')) {
-    throw new JsonParseError(`${label}: JSON format invalid`, responseText)
+  const jsonText = cleanJsonEnvelope(responseText)
+  if (!jsonText) {
+    throw new JsonParseError(`${label}: JSON format invalid (empty response)`, responseText)
   }
 
-  const parsed = findFirstJsonObjectArray(jsonText)
-  if (!parsed) {
-    throw new JsonParseError(`${label}: JSON parse error: no valid object array found`, responseText)
+  const parsedArray = findFirstJsonObjectArray(jsonText)
+  if (parsedArray) {
+    const rows = parsedArray.filter((item): item is T => typeof item === 'object' && item !== null)
+    if (rows.length > 0) {
+      return rows
+    }
   }
 
-  const rows = parsed.filter((item): item is T => typeof item === 'object' && item !== null)
-  if (rows.length === 0) {
-    throw new JsonParseError(`${label}: invalid payload`, responseText)
+  const parsedObject = findFirstJsonObject(jsonText)
+  if (parsedObject) {
+    const candidateArray = pickObjectArrayFromRecord(parsedObject)
+    if (candidateArray) {
+      const rows = candidateArray.filter((item): item is T => typeof item === 'object' && item !== null)
+      if (rows.length > 0) {
+        return rows
+      }
+    }
+    throw new JsonParseError(`${label}: JSON parse error: object found but no valid object array`, responseText)
   }
-  return rows
+
+  throw new JsonParseError(`${label}: JSON format invalid`, responseText)
 }
 
 function findFirstJsonObjectArray(text: string): unknown[] | null {
@@ -155,11 +173,95 @@ function findFirstJsonObjectArray(text: string): unknown[] | null {
       if (!hasObjectLike) continue
       return parsed
     } catch {
-      // Ignore non-JSON bracket segments such as "[关键道具]" and keep scanning.
+      // Ignore non-JSON bracket segments and continue scanning.
     }
   }
 
   return null
+}
+
+function findFirstJsonObject(text: string): Record<string, unknown> | null {
+  let insideString = false
+  let escaped = false
+  let depth = 0
+  let candidateStart = -1
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index]
+
+    if (insideString) {
+      if (escaped) {
+        escaped = false
+        continue
+      }
+      if (char === '\\') {
+        escaped = true
+        continue
+      }
+      if (char === '"') {
+        insideString = false
+      }
+      continue
+    }
+
+    if (char === '"') {
+      insideString = true
+      continue
+    }
+
+    if (char === '{') {
+      if (depth === 0) candidateStart = index
+      depth += 1
+      continue
+    }
+
+    if (char !== '}') continue
+    if (depth === 0) continue
+
+    depth -= 1
+    if (depth !== 0 || candidateStart === -1) continue
+
+    const candidate = text.slice(candidateStart, index + 1)
+    try {
+      const parsed = JSON.parse(candidate)
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>
+      }
+    } catch {
+      // Keep scanning for next valid JSON object.
+    }
+  }
+
+  return null
+}
+
+function pickObjectArrayFromRecord(record: Record<string, unknown>): unknown[] | null {
+  const preferredKeys = ['panels', 'data', 'result', 'items', 'list', 'output']
+
+  for (const key of preferredKeys) {
+    const value = record[key]
+    if (Array.isArray(value) && value.some((item) => typeof item === 'object' && item !== null)) {
+      return value
+    }
+  }
+
+  const scanValues = (input: Record<string, unknown>): unknown[] | null => {
+    for (const value of Object.values(input)) {
+      if (Array.isArray(value) && value.some((item) => typeof item === 'object' && item !== null)) {
+        return value
+      }
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        for (const nested of Object.values(value as Record<string, unknown>)) {
+          if (Array.isArray(nested) && nested.some((item) => typeof item === 'object' && item !== null)) {
+            return nested
+          }
+        }
+      }
+    }
+    return null
+  }
+
+  return scanValues(record)
 }
 
 function parseClipCharacters(raw: string | null): ClipCharacterRef[] {
@@ -679,6 +781,13 @@ function optimizePhase3Panels(params: { panels: StoryboardPanel[]; clipContent: 
 
 const MAX_STEP_ATTEMPTS = 3
 const MAX_RETRY_DELAY_MS = 10_000
+const JSON_REPAIR_MAX_CHARS = 16_000
+const PHASE1_CLIP_JSON_MAX_CHARS = 1_800
+const PHASE1_CLIP_CONTENT_MAX_CHARS = 12_000
+const PHASE_PROMPT_PANEL_TEXT_MAX_CHARS = 220
+const DEFAULT_PHASE1_CONCURRENCY = 2
+const DEFAULT_PHASE23_CONCURRENCY = 2
+const MAX_PHASE_CONCURRENCY = 6
 
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -688,6 +797,118 @@ function computeRetryDelayMs(attempt: number) {
   const base = Math.min(1_000 * Math.pow(2, Math.max(0, attempt - 1)), MAX_RETRY_DELAY_MS)
   const jitter = Math.floor(Math.random() * 300)
   return base + jitter
+}
+
+function truncateForPrompt(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text
+  const headSize = Math.max(200, Math.floor(maxChars * 0.72))
+  const tailSize = Math.max(120, maxChars - headSize)
+  const omitted = text.length - headSize - tailSize
+  return `${text.slice(0, headSize)}
+...[TRUNCATED ${omitted} CHARS]...
+${text.slice(-tailSize)}`
+}
+
+
+function compactPromptText(value: unknown, maxChars = PHASE_PROMPT_PANEL_TEXT_MAX_CHARS): string {
+  if (typeof value !== 'string') return ''
+  const normalized = value.replace(/\s+/g, ' ').trim()
+  if (normalized.length <= maxChars) return normalized
+  return `${normalized.slice(0, maxChars)}...`
+}
+
+function buildPanelsJsonForPrompt(panels: StoryboardPanel[]): string {
+  const compactPanels = panels.map((panel) => ({
+    panel_number: panel.panel_number,
+    panel_type: panel.panel_type,
+    description: compactPromptText(panel.description),
+    location: compactPromptText(panel.location, 120),
+    scene_type: panel.scene_type,
+    source_text: compactPromptText(panel.source_text),
+    characters: Array.isArray(panel.characters)
+      ? panel.characters.map((item) => {
+        if (typeof item === 'string') return item
+        if (item && typeof item === 'object') {
+          const record = item as Record<string, unknown>
+          return {
+            name: typeof record.name === 'string' ? record.name : '',
+            appearance: typeof record.appearance === 'string' ? record.appearance : undefined,
+          }
+        }
+        return item
+      })
+      : [],
+  }))
+  return JSON.stringify(compactPanels, null, 2)
+}
+
+function parseOptionalConcurrencyEnv(name: string): number | null {
+  const raw = process.env[name]
+  if (!raw) return null
+  const parsed = Number.parseInt(raw, 10)
+  if (!Number.isFinite(parsed) || parsed <= 0) return null
+  return Math.min(MAX_PHASE_CONCURRENCY, parsed)
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  if (items.length === 0) return []
+
+  const result = new Array<R>(items.length)
+  let cursor = 0
+  const workerCount = Math.max(1, Math.min(concurrency, items.length))
+
+  const worker = async () => {
+    while (true) {
+      const index = cursor
+      cursor += 1
+      if (index >= items.length) return
+      result[index] = await mapper(items[index]!, index)
+    }
+  }
+
+  await Promise.all(Array.from({ length: workerCount }, () => worker()))
+  return result
+}
+
+function buildJsonRepairPrompt(rawText: string): string {
+  const clipped = truncateForPrompt(rawText, JSON_REPAIR_MAX_CHARS)
+  return [
+    'You are a JSON repair tool.',
+    'Task: Convert the input into a strict JSON array of objects.',
+    'Rules:',
+    '1. Output only JSON. No markdown, no explanation.',
+    '2. Keep original meaning and field names as much as possible.',
+    '3. Escape all quotes/newlines correctly so JSON.parse can pass.',
+    '4. If some fields are missing, use null or empty string instead of inventing long content.',
+    '',
+    'Input to repair:',
+    clipped,
+  ].join('\n')
+}
+
+async function tryRepairStepOutput<T>(params: {
+  runStep: ScriptToStoryboardOrchestratorInput['runStep']
+  meta: ScriptToStoryboardStepMeta
+  action: string
+  maxOutputTokens: number
+  rawText: string
+  parse: (text: string) => T
+}): Promise<{ output: ScriptToStoryboardStepOutput; parsed: T }> {
+  const repairPrompt = buildJsonRepairPrompt(params.rawText)
+  const repairMeta: ScriptToStoryboardStepMeta = {
+    ...params.meta,
+    stepId: `${params.meta.stepId}_json_repair`,
+    stepTitle: params.meta.stepTitle,
+  }
+  const repairAction = `${params.action}_json_repair`
+  const repairTokens = Math.min(1800, Math.max(800, params.maxOutputTokens))
+  const output = await params.runStep(repairMeta, repairPrompt, repairAction, repairTokens)
+  const parsed = params.parse(output.text)
+  return { output, parsed }
 }
 
 function shouldRetryStepError(error: unknown, message: string, retryable: boolean) {
@@ -715,10 +936,30 @@ async function runStepWithRetry<T>(
         stepAttempt: attempt,
         stepTitle: baseMeta.stepTitle,
       }
+
     try {
       const output = await runStep(meta, prompt, action, maxOutputTokens)
-      const parsed = parse(output.text)
-      return { output, parsed }
+      try {
+        const parsed = parse(output.text)
+        return { output, parsed }
+      } catch (parseError) {
+        if (parseError instanceof JsonParseError && output.text.trim()) {
+          try {
+            const repaired = await tryRepairStepOutput({
+              runStep,
+              meta,
+              action,
+              maxOutputTokens,
+              rawText: output.text,
+              parse,
+            })
+            return repaired
+          } catch {
+            throw parseError
+          }
+        }
+        throw parseError
+      }
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error))
       const normalizedError = normalizeAnyError(error, { context: 'worker' })
@@ -777,6 +1018,10 @@ export async function runScriptToStoryboardOrchestrator(
     '7. Ignore fixed character-count heuristics (for example, 15 chars = 1 shot); narrative beats always take priority.',
     '8. Follow continuity coverage order when possible: establishing/master -> subject action -> reaction or insert.',
     '9. If a beat does not introduce new action or new information, do not add extra coverage angles.',
+    '10. Output must be a strict JSON array of objects.',
+    '11. Output only JSON, no markdown fences and no explanation text.',
+    '12. Never prepend labels like "[SHOT]" or "[PROPS]"; return pure JSON only.',
+    '13. Ensure the JSON is parseable by JSON.parse (escape quotes/newlines correctly).',
   ].join('\n')
 
   const phase3PromptGuardrails = [
@@ -789,24 +1034,35 @@ export async function runScriptToStoryboardOrchestrator(
     '6. Apply continuity editing discipline: preserve screen direction and use shot changes only when 30-degree or shot-size differences carry narrative value.',
     '7. Use re-establishing shots only when geography becomes unclear after close coverage, not as repeated filler.',
     '8. Prefer match-on-action progression over stylistic angle hopping.',
+    '9. Keep each panel concise: avoid repeating full world setup text in every panel.',
+    '10. Keep source_text as excerpt-level context rather than long paragraph copy.',
   ].join('\n')
+
+  const legacyConcurrency = parseOptionalConcurrencyEnv('NP_SCRIPT_TO_STORYBOARD_CONCURRENCY')
+  const phase1Concurrency = parseOptionalConcurrencyEnv('NP_SCRIPT_TO_STORYBOARD_PHASE1_CONCURRENCY')
+    ?? legacyConcurrency
+    ?? DEFAULT_PHASE1_CONCURRENCY
+  const phase23Concurrency = parseOptionalConcurrencyEnv('NP_SCRIPT_TO_STORYBOARD_PHASE23_CONCURRENCY')
+    ?? legacyConcurrency
+    ?? DEFAULT_PHASE23_CONCURRENCY
 
   const phase1PanelsByClipId = new Map<string, StoryboardPanel[]>()
 
-  const phase1Results = await Promise.all(
-    clips.map(async (clip, i) => {
+  const phase1Results = await mapWithConcurrency(clips, phase1Concurrency, async (clip, i) => {
       const clipIndex = i + 1
       const clipContent = typeof clip.content === 'string' ? clip.content.trim() : ''
       if (!clipContent) {
         throw new Error(`Clip ${formatClipId(clip)} content is empty`)
       }
+      const clipContentForPrompt = truncateForPrompt(clipContent, PHASE1_CLIP_CONTENT_MAX_CHARS)
+      const clipJsonContent = truncateForPrompt(clipContent, PHASE1_CLIP_JSON_MAX_CHARS)
       const clipCharacters = parseClipCharacters(clip.characters)
       const filteredAppearanceList = getFilteredAppearanceList(novelPromotionData.characters || [], clipCharacters)
       const filteredFullDescription = getFilteredFullDescription(novelPromotionData.characters || [], clipCharacters)
       const clipJson = JSON.stringify(
         {
           id: clip.id,
-          content: clipContent,
+          content: clipJsonContent,
           characters: clipCharacters,
           location: clip.location || null,
         },
@@ -823,10 +1079,12 @@ export async function runScriptToStoryboardOrchestrator(
         .replace('{clip_json}', clipJson)
 
       const screenplay = parseScreenplay(clip.screenplay)
-      if (screenplay) {
-        phase1Prompt = phase1Prompt.replace('{clip_content}', '[SCREENPLAY_FORMAT]\n' + JSON.stringify(screenplay, null, 2))
+      if (screenplay !== null) {
+        const compactScreenplay = JSON.stringify(screenplay)
+        const screenplayForPrompt = truncateForPrompt(compactScreenplay, PHASE1_CLIP_CONTENT_MAX_CHARS)
+        phase1Prompt = phase1Prompt.replace('{clip_content}', `[SCREENPLAY_FORMAT]\n${screenplayForPrompt}`)
       } else {
-        phase1Prompt = phase1Prompt.replace('{clip_content}', clipContent)
+        phase1Prompt = phase1Prompt.replace('{clip_content}', clipContentForPrompt)
       }
       phase1Prompt = `${phase1Prompt}\n\n${phase1PromptGuardrails}`
 
@@ -851,15 +1109,13 @@ export async function runScriptToStoryboardOrchestrator(
         clipId: clip.id,
         planPanels,
       }
-    }),
-  )
+  })
 
   for (const result of phase1Results) {
     phase1PanelsByClipId.set(result.clipId, result.planPanels)
   }
 
-  const clipPanels = await Promise.all(
-    clips.map(async (clip, index): Promise<ClipStoryboardPanels> => {
+  const clipPanels = await mapWithConcurrency(clips, phase23Concurrency, async (clip, index): Promise<ClipStoryboardPanels> => {
       const clipIndex = index + 1
       const clipCharacters = parseClipCharacters(clip.characters)
       const clipLocation = clip.location || null
@@ -894,19 +1150,21 @@ export async function runScriptToStoryboardOrchestrator(
         totalStepCount,
       )
 
+      const panelsJsonForPrompt = buildPanelsJsonForPrompt(planPanels)
+
       const phase2Prompt = promptTemplates.phase2CinematographyTemplate
-        .replace('{panels_json}', JSON.stringify(planPanels, null, 2))
+        .replace('{panels_json}', panelsJsonForPrompt)
         .replace(/\{panel_count\}/g, String(planPanels.length))
         .replace('{locations_description}', filteredLocationsDescription)
         .replace('{characters_info}', filteredFullDescription)
 
       const phase2ActingPrompt = promptTemplates.phase2ActingTemplate
-        .replace('{panels_json}', JSON.stringify(planPanels, null, 2))
+        .replace('{panels_json}', panelsJsonForPrompt)
         .replace(/\{panel_count\}/g, String(planPanels.length))
         .replace('{characters_info}', filteredFullDescription)
 
       let phase3Prompt = promptTemplates.phase3DetailTemplate
-        .replace('{panels_json}', JSON.stringify(planPanels, null, 2))
+        .replace('{panels_json}', panelsJsonForPrompt)
         .replace('{characters_age_gender}', filteredFullDescription)
         .replace('{characters_profile_summary}', profileSummary)
         .replace('{locations_description}', filteredLocationsDescription)
@@ -956,8 +1214,7 @@ export async function runScriptToStoryboardOrchestrator(
           actingDirections,
         }),
       }
-    }),
-  )
+  })
 
   const totalPanelCount = clipPanels.reduce((sum, item) => sum + item.finalPanels.length, 0)
   return {
