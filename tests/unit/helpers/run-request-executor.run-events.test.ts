@@ -13,7 +13,7 @@ function jsonResponse(payload: unknown, status = 200) {
 
 describe('run-request-executor run events path', () => {
   it('uses /api/runs/:runId/events when async response includes runId', async () => {
-    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>()
+    const fetchMock = vi.fn<typeof fetch>()
     fetchMock
       .mockResolvedValueOnce(jsonResponse({
         success: true,
@@ -79,7 +79,6 @@ describe('run-request-executor run events path', () => {
       }))
 
     const originalFetch = globalThis.fetch
-    // @ts-expect-error test override
     globalThis.fetch = fetchMock
 
     try {

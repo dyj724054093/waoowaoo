@@ -45,6 +45,7 @@ export function useWorkspaceProjectSnapshot({
       capabilityOverrides,
       ttsRate: projectData?.ttsRate,
       artStyle: projectData?.artStyle,
+      workflowMode: projectData?.workflowMode,
     }
   }, [episode?.novelText, episode?.storyboards, project.novelPromotionData, urlStage])
 }

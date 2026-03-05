@@ -16,6 +16,7 @@ import { normalizeToBase64ForGeneration } from '@/lib/media/outbound-image'
 import { resolveBuiltinCapabilitiesByModelKey } from '@/lib/model-capabilities/lookup'
 import { parseModelKeyStrict } from '@/lib/model-config-contract'
 import { getProviderConfig } from '@/lib/api-config'
+import { applyNightVisualHardConstraints } from '@/lib/constants'
 
 type AnyObj = Record<string, unknown>
 type VideoOptionValue = string | number | boolean
@@ -46,6 +47,146 @@ async function fetchPanelByStoryboardIndex(storyboardId: string, panelIndex: num
       panelIndex,
     },
   })
+}
+
+// ========== 视频 prompt 上下文增强 ==========
+
+type PhotographyContext = {
+  lighting?: string
+  color_tone?: string
+  depth_of_field?: string
+}
+
+type CharacterVisualTag = {
+  name: string
+  visualTag: string
+}
+
+function compactText(text: string, maxLen: number): string {
+  const cleaned = text.replace(/\s+/g, ' ').trim()
+  return cleaned.length > maxLen ? cleaned.slice(0, maxLen) + '…' : cleaned
+}
+
+function parsePhotographyRules(panel: PanelRecord): PhotographyContext | null {
+  if (!panel.photographyRules) return null
+  try {
+    const rules = JSON.parse(panel.photographyRules) as Record<string, unknown>
+    const result: PhotographyContext = {}
+    if (typeof rules.lighting === 'string') result.lighting = rules.lighting
+    if (typeof rules.colorPalette === 'string') result.color_tone = rules.colorPalette
+    if (typeof rules.atmosphere === 'string') result.depth_of_field = rules.atmosphere
+    return Object.keys(result).length > 0 ? result : null
+  } catch {
+    return null
+  }
+}
+
+function parsePanelCharacterNames(panel: PanelRecord): string[] {
+  if (!panel.characters) return []
+  try {
+    const parsed = JSON.parse(panel.characters) as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .map((item: unknown) => {
+        if (typeof item === 'string') return item
+        if (typeof item === 'object' && item !== null && 'name' in item) {
+          return typeof (item as Record<string, unknown>).name === 'string'
+            ? (item as Record<string, unknown>).name as string
+            : ''
+        }
+        return ''
+      })
+      .filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
+async function loadCharacterVisualDescriptions(
+  panel: PanelRecord,
+  projectId: string,
+): Promise<CharacterVisualTag[]> {
+  const charNames = parsePanelCharacterNames(panel)
+  if (charNames.length === 0) return []
+
+  const novelData = await prisma.novelPromotionProject.findUnique({
+    where: { projectId },
+    include: {
+      characters: {
+        include: { appearances: true },
+      },
+    },
+  })
+  if (!novelData?.characters) return []
+
+  return charNames
+    .map((refName) => {
+      const refLower = refName.toLowerCase().trim()
+      const char = novelData.characters.find((c) => {
+        const charLower = c.name.toLowerCase().trim()
+        if (charLower === refLower) return true
+        const aliases = charLower.split('/').map((s) => s.trim()).filter(Boolean)
+        return aliases.includes(refLower)
+      })
+      if (!char) return null
+
+      const appearance = char.appearances?.[0]
+      let desc: string | null = null
+      if (appearance) {
+        if (appearance.descriptions) {
+          try {
+            const descs = JSON.parse(appearance.descriptions) as string[]
+            const idx = typeof appearance.selectedIndex === 'number' ? appearance.selectedIndex : 0
+            desc = descs[idx] || appearance.description || null
+          } catch {
+            desc = appearance.description || null
+          }
+        } else {
+          desc = appearance.description || null
+        }
+      }
+
+      return {
+        name: refName,
+        visualTag: desc ? compactText(desc, 80) : refName,
+      }
+    })
+    .filter((item): item is CharacterVisualTag => item !== null)
+}
+
+function buildContinuityPrompt(input: {
+  basePrompt: string
+  panel: PanelRecord
+  sourceText?: string | null
+  photographyContext?: PhotographyContext | null
+  characterDescriptions?: CharacterVisualTag[]
+}): string {
+  const { basePrompt, characterDescriptions, sourceText, photographyContext } = input
+  const anchorLines: string[] = []
+
+  if (characterDescriptions && characterDescriptions.length > 0) {
+    anchorLines.push(
+      `角色外貌：${characterDescriptions.map((c) => `${c.name}=${c.visualTag}`).join('；')}`,
+    )
+  }
+
+  if (sourceText) {
+    anchorLines.push(`原文：${compactText(sourceText, 200)}`)
+  }
+
+  if (photographyContext) {
+    const parts: string[] = []
+    if (photographyContext.lighting) parts.push(`光线=${photographyContext.lighting}`)
+    if (photographyContext.color_tone) parts.push(`色调=${photographyContext.color_tone}`)
+    if (photographyContext.depth_of_field) parts.push(`氛围=${photographyContext.depth_of_field}`)
+    if (parts.length > 0) {
+      anchorLines.push(`摄影指导：${parts.join('，')}`)
+    }
+  }
+
+  if (anchorLines.length === 0) return basePrompt
+
+  return `${basePrompt}\n\n【上下文参考】\n${anchorLines.join('\n')}`
 }
 
 async function getPanelForVideoTask(job: Job<TaskJobData>) {
@@ -89,10 +230,28 @@ async function generateVideoForPanel(
   const firstLastCustomPrompt = typeof firstLastFramePayload?.customPrompt === 'string' ? firstLastFramePayload.customPrompt : null
   const persistedFirstLastPrompt = firstLastFramePayload ? panel.firstLastFramePrompt : null
   const customPrompt = typeof payload.customPrompt === 'string' ? payload.customPrompt : null
-  const prompt = firstLastCustomPrompt || persistedFirstLastPrompt || customPrompt || panel.videoPrompt || panel.description
-  if (!prompt) {
+
+  const isCustomOverride = !!(firstLastCustomPrompt || persistedFirstLastPrompt || customPrompt)
+  let basePrompt = firstLastCustomPrompt || persistedFirstLastPrompt || customPrompt || panel.videoPrompt || panel.description
+  if (!basePrompt) {
     throw new Error(`Panel ${panel.id} has no video prompt`)
   }
+
+  // 当使用 panel 自带的 videoPrompt/description 时，注入上下文增强
+  if (!isCustomOverride) {
+    const [characterDescriptions, photographyContext] = await Promise.all([
+      loadCharacterVisualDescriptions(panel, job.data.projectId),
+      Promise.resolve(parsePhotographyRules(panel)),
+    ])
+    basePrompt = buildContinuityPrompt({
+      basePrompt,
+      panel,
+      sourceText: panel.srtSegment,
+      photographyContext,
+      characterDescriptions,
+    })
+  }
+  const prompt = applyNightVisualHardConstraints(basePrompt, job.data.locale === 'en' ? 'en' : 'zh')
 
   const sourceImageUrl = toSignedUrlIfCos(panel.imageUrl, 3600)
   if (!sourceImageUrl) {

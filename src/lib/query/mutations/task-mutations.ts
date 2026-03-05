@@ -24,3 +24,27 @@ export function useDismissFailedTasks(projectId: string) {
         },
     })
 }
+
+export function useCancelTask(projectId: string) {
+    const queryClient = useQueryClient()
+
+    return useMutation({
+        mutationFn: async (taskId: string) => {
+            return await requestJsonWithError<{ success: boolean; cancelled: boolean }>(
+                /api/tasks/,
+                {
+                    method: 'DELETE',
+                },
+                '取消任务失败',
+            )
+        },
+        onSettled: async () => {
+            await Promise.all([
+                queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all(projectId), exact: false }),
+                queryClient.invalidateQueries({ queryKey: queryKeys.tasks.targetStatesAll(projectId), exact: false }),
+                queryClient.invalidateQueries({ queryKey: queryKeys.projectAssets.all(projectId) }),
+                queryClient.invalidateQueries({ queryKey: queryKeys.projectData(projectId) }),
+            ])
+        },
+    })
+}

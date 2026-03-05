@@ -34,11 +34,7 @@ export default function ImageEditModal({
         : t('imageEdit.locationLabel', { name })
 
     const handleSubmit = () => {
-        if (!modifyPrompt.trim()) {
-            alert(t('modal.designInstruction'))
-            return
-        }
-        onConfirm(modifyPrompt, editImages.length > 0 ? editImages : undefined)
+        onConfirm(modifyPrompt.trim(), editImages.length > 0 ? editImages : undefined)
     }
 
     // 处理粘贴事件
@@ -156,8 +152,7 @@ export default function ImageEditModal({
                     </button>
                     <button
                         onClick={handleSubmit}
-                        disabled={!modifyPrompt.trim()}
-                        className="px-4 py-2 bg-[var(--glass-accent-from)] text-white rounded-lg hover:bg-[var(--glass-accent-to)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        className="px-4 py-2 bg-[var(--glass-accent-from)] text-white rounded-lg hover:bg-[var(--glass-accent-to)] transition-colors"
                     >
                         {t('imageEdit.startEditing')}
                     </button>

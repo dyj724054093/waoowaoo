@@ -23,9 +23,14 @@ export const PROMPT_IDS = {
   NP_LOCATION_REGENERATE: 'np_location_regenerate',
   NP_SCREENPLAY_CONVERSION: 'np_screenplay_conversion',
   NP_SELECT_LOCATION: 'np_select_location',
+  NP_SELECT_LOCATION_RECALL: 'np_select_location_recall',
   NP_SINGLE_PANEL_IMAGE: 'np_single_panel_image',
   NP_STORYBOARD_EDIT: 'np_storyboard_edit',
   NP_VOICE_ANALYSIS: 'np_voice_analysis',
+  // ── Seedance 专用模板 ──
+  NP_SEEDANCE_STORYBOARD_PLAN: 'np_seedance_storyboard_plan',
+  NP_SEEDANCE_CINEMATOGRAPHER: 'np_seedance_cinematographer',
+  NP_SEEDANCE_DETAIL: 'np_seedance_storyboard_detail',
 } as const
 
 export type PromptId = (typeof PROMPT_IDS)[keyof typeof PROMPT_IDS]

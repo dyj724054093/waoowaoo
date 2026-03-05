@@ -2,6 +2,7 @@
 
 import { useCallback } from 'react'
 import { VideoClip, VideoEditorProject } from '../types/editor.types'
+import { resolveTransition } from '@/lib/seedance'
 
 interface UseEditorActionsProps {
     projectId: string
@@ -18,6 +19,9 @@ interface PanelData {
     videoUrl?: string
     description?: string
     duration?: number
+    // Seedance extension fields (optional)
+    shotRelation?: string | null
+    pace?: string | null
 }
 
 /**
@@ -51,10 +55,14 @@ export function createProjectFromPanels(
                     style: 'default' as const
                 } : undefined
             },
-            transition: index < videoPanels.length - 1 ? {
+            transition: resolveTransition(
+                panel.shotRelation as import('@/lib/seedance').ShotRelation | null | undefined,
+                panel.pace as import('@/lib/seedance').Pace | undefined,
+                index === videoPanels.length - 1,
+            ) ?? (index < videoPanels.length - 1 ? {
                 type: 'dissolve' as const,
-                durationInFrames: 15 // 0.5s @ 30fps
-            } : undefined,
+                durationInFrames: 15,
+            } : undefined),
             metadata: {
                 panelId: panel.id || `${panel.storyboardId}-${panel.panelIndex ?? index}`,
                 storyboardId: panel.storyboardId,
@@ -85,7 +93,7 @@ export function useEditorActions({ projectId, episodeId }: UseEditorActionsProps
         const response = await fetch(`/api/novel-promotion/${projectId}/editor`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ projectData: project })
+            body: JSON.stringify({ episodeId, projectData: project })
         })
 
         if (!response.ok) {
@@ -93,7 +101,7 @@ export function useEditorActions({ projectId, episodeId }: UseEditorActionsProps
         }
 
         return response.json()
-    }, [projectId])
+    }, [projectId, episodeId])
 
     /**
      * 加载项目
@@ -113,12 +121,14 @@ export function useEditorActions({ projectId, episodeId }: UseEditorActionsProps
     /**
      * 发起渲染导出
      */
-    const startRender = useCallback(async (editorProjectId: string) => {
+    const startRender = useCallback(async (project: VideoEditorProject) => {
         const response = await fetch(`/api/novel-promotion/${projectId}/editor/render`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                editorProjectId,
+                editorProjectId: project.id,
+                episodeId,
+                projectData: project,
                 format: 'mp4',
                 quality: 'high'
             })
@@ -129,14 +139,14 @@ export function useEditorActions({ projectId, episodeId }: UseEditorActionsProps
         }
 
         return response.json()
-    }, [projectId])
+    }, [projectId, episodeId])
 
     /**
      * 获取渲染状态
      */
     const getRenderStatus = useCallback(async (editorProjectId: string) => {
         const response = await fetch(
-            `/api/novel-promotion/${projectId}/editor/render?id=${editorProjectId}`
+            `/api/novel-promotion/${projectId}/editor/render?id=${editorProjectId}&episodeId=${episodeId}`
         )
 
         if (!response.ok) {
@@ -144,7 +154,7 @@ export function useEditorActions({ projectId, episodeId }: UseEditorActionsProps
         }
 
         return response.json()
-    }, [projectId])
+    }, [projectId, episodeId])
 
     return {
         saveProject,

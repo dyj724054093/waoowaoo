@@ -32,7 +32,7 @@ export const POST = apiHandler(async (
   const panelIndex = Number(body?.panelIndex)
   const modifyPrompt = typeof body?.modifyPrompt === 'string' ? body.modifyPrompt.trim() : ''
 
-  if (!storyboardId || !Number.isFinite(panelIndex) || !modifyPrompt) {
+  if (!storyboardId || !Number.isFinite(panelIndex)) {
     throw new ApiError('INVALID_PARAMS')
   }
 
@@ -82,6 +82,7 @@ export const POST = apiHandler(async (
 
   const payload = {
     ...body,
+    modifyPrompt,
     type: 'storyboard',
     panelId: panel.id,
     panelIndex,

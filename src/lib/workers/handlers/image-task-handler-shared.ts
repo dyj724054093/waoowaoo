@@ -8,6 +8,7 @@ import {
   uploadImageSourceToCos,
   withLabelBar,
 } from '../utils'
+import { findLocationByReferenceName } from '@/lib/location-matching'
 
 export type AnyObj = Record<string, unknown>
 
@@ -213,7 +214,7 @@ export async function collectPanelReferenceImages(projectData: NovelProjectData,
   }
 
   if (panel.location) {
-    const location = (projectData.locations || []).find((loc) => loc.name.toLowerCase() === panel.location!.toLowerCase())
+    const location = findLocationByReferenceName(projectData.locations || [], panel.location)
     if (location) {
       const images = location.images || []
       const selected = images.find((img) => img.isSelected) || images[0]

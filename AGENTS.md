@@ -1,56 +1,53 @@
-# AGENTS.md
+# Repository Guidelines
 
-## 适用范围
-- 本规范适用于本仓库的所有目录与文件。
-- 若下级目录存在新的 `AGENTS.md`，下级规范仅可补充，不可弱化本文件的强约束。
+## Project Structure & Module Organization
+- App code lives in src/:
+  - src/app/ for Next.js routes ([locale] UI routes and api/ handlers).
+  - src/lib/ for domain/runtime logic (task queue, workers, billing, run-runtime).
+  - src/components/ for reusable UI.
+  - src/features/video-editor/ for editor-specific modules.
+- Data and schema:
+  - prisma/schema.prisma for DB models.
+  - data/ for local file storage.
+- Tests are in tests/unit, tests/integration, and tests/concurrency.
+- Docs and incident/design records are under docs/.
 
-## 项目目标与编码原则
-- 项目定位为全新系统，`统一` 与 `简洁` 是最高优先级。
-- 禁止以“兼容旧代码/旧行为”为理由引入冗余分支、兼容层、双轨逻辑或临时补丁。
-- 新功能与重构应优先服务于一致性、可维护性、可读性，而非历史包袱。
-- 禁止使用任何any类型，必须明确类型
-## 文件与模块化要求
-- 大文件必须拆分为清晰模块，按职责边界组织。
-- 单个文件若同时承担多类职责（如 UI、状态、数据请求、转换逻辑混杂）必须拆分。
-- 公共能力应抽离为可复用模块，避免复制粘贴。
-- 命名必须体现职责，目录结构应支持快速定位与阅读。
+## Build, Test, and Development Commands
+- npm run dev: start Next.js + workers + watchdog + bull-board concurrently.
+- npm run build: generate Prisma client and build production bundle.
+- npm run start: run production server and worker processes.
+- npm run lint: run ESLint.
+- npm run test:unit:all: run all unit tests with Vitest.
+- npm run test:integration:api: run API integration tests.
+- npm run test:behavior:full: run behavior guards + unit/api/chain behavior suites.
+- Docker local stack: docker compose up -d.
 
-## 数据安全与高风险操作
-- 任何可能导致数据 `删除`、`丢失`、`覆盖`、`结构变更`、`不可逆修改` 的操作，执行前必须获得用户明确同意。
-- 未获得明确同意时，仅允许进行只读分析、方案设计与风险说明，不得落地执行。
-- 涉及数据库、文件批量改写、迁移脚本、清理脚本、覆盖写入等场景，一律按高风险处理。
-- 但可以运行测试、构建等无害的操作。
-- 可以执行测试，构建等没有毁灭性的命令
+## Coding Style & Naming Conventions
+- Language: TypeScript (strict typing expected). Avoid any unless truly unavoidable.
+- Indentation: 2 spaces; keep functions focused and small.
+- Naming:
+  - React components: PascalCase (example: NovelPromotionWorkspace.tsx).
+  - Hooks and utilities: camelCase (example: useWorkspaceProjectSnapshot.ts).
+  - Route folders and scripts: kebab-case where applicable.
+- Use existing lint rules in .eslintrc.json and eslint.config.mjs before submitting.
 
+## Testing Guidelines
+- Framework: Vitest.
+- Add or adjust tests for every behavior change, especially workers, task routes, and runtime event mapping.
+- Prefer precise assertions on payload/state transitions, not only call-count assertions.
+- Keep test scope aligned with change type: unit for logic, integration for route/DB/queue contracts.
 
-## 思维与决策方法
-- 所有方案必须采用第一性原理：先明确目标、约束与事实，再推导实现路径。
-- 禁止基于“惯例如此”或“历史如此”直接做决策；必须说明核心假设与取舍依据。
-- 实现应追求最小必要复杂度，避免无效抽象与过度设计。
+## Commit & Pull Request Guidelines
+- History favors conventional prefixes: fix(...), feat, docs, chore, release.
+- Recommended format: type(scope): concise summary.
+- PRs should include:
+  - problem statement and root cause,
+  - summary of changes,
+  - test evidence (commands + results),
+  - screenshots/video for UI-impacting changes,
+  - linked issue/incidents when relevant.
 
-## 命令与 Git 操作限制
-- 禁止执行除 `Git 只读查询` 以外的任何命令。
-- 允许的 Git 只读操作仅包括状态与历史查询，例如：`git status`、`git log`、`git diff`、`git show`、`git branch`（只读用法）。
-- 任何会改变 Git 状态或历史的操作必须先获得用户明确同意，包括但不限于：`commit`、`push`、`pull`、`merge`、`rebase`、`cherry-pick`、`reset`、`checkout`（修改性用法）、创建/删除分支、打标签。
-- 在未获同意前，不得进行代码改写、暂存、提交、同步、回滚或历史重写。
-- 可以执行测试构建 build lint等测试命令
-
-## 不掩盖任何问题
-- 不要做任何不必要的回退逻辑，特别是有可能隐藏问题的，除非用户允许，否则禁止做，如发现一个模型不可用时自动跳转到新的模型，或代码失效时，报错时直接略过，或者没有的时候提供默认值等错误操作，或制造假数据等。
--系统执行必须遵循显式失败与零隐式回退原则：严禁静默跳过错误、隐式配置兜底或自动模型降级，确保所有非预期行为原地崩溃并如实上报。
-
-
-## 敢于合理质疑用户 了解用户真实需求
-- 提问以了解我真正需要什么（不仅仅是我说什么）。
-- 用户可能不够了解代码 对技术的理解可能不如你 
-- 用户和你说的作为参考 而不是绝对值 如果某些事情说不通，请挑战我的假设。
-
-## 测试规范
-
-详细规范见 [`agent/testing.md`](agent/testing.md)，以下为强制核心约束：
-
-- 新增功能或修改功能逻辑必须进行测试，新增功能必须增加测试，如修改文件导致需修改测试文件务必一起进行修改，确保测试百分百跟随
-- 改 worker 逻辑 / 修 bug / 加 route 或 task type → 必须写或更新测试
-- 修 bug 必须同步新增回归测试，`it()` 名称体现该 bug 场景
-- 断言必须检查具体值（DB 写入字段值、函数入参、返回值），禁止只用 `toHaveBeenCalled()`
-- 禁止"自给自答"：mock 返回 X 再断言 X，没有经过任何业务逻辑
+## Security & Configuration Tips
+- Never commit secrets. Use .env and .env.example as templates.
+- Treat INTERNAL_TASK_TOKEN, API keys, and DB credentials as sensitive.
+- Validate model/provider config with existing guard scripts before release.

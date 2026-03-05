@@ -1,6 +1,6 @@
 import { type Job } from 'bullmq'
 import { prisma } from '@/lib/prisma'
-import { getArtStylePrompt } from '@/lib/constants'
+import { applyNightVisualHardConstraints, getEffectiveArtStylePrompt } from '@/lib/constants'
 import { logInfo as _ulogInfo } from '@/lib/logging/core'
 import { type TaskJobData } from '@/lib/task/types'
 import {
@@ -139,12 +139,12 @@ export async function handlePanelVariantTask(job: Job<TaskJobData>) {
   const normalizedRefs = await normalizeReferenceImagesForGeneration(refs)
 
   // 使用 agent_shot_variant_generate.txt 提示词模板
-  const artStyle = getArtStylePrompt(modelConfig.artStyle, job.data.locale)
+  const artStyle = getEffectiveArtStylePrompt(modelConfig.artStyle, job.data.locale)
   const charactersInfo = buildCharactersInfo(newPanel, projectData)
   const characterAssetsDesc = buildCharacterAssetsDescription(newPanel, projectData)
   const locationName = newPanel.location || sourcePanel.location || ''
 
-  const prompt = buildVariantPrompt({
+  const promptBase = buildVariantPrompt({
     locale: job.data.locale,
     originalDescription: sourcePanel.description || '',
     originalShotType: sourcePanel.shotType || '',
@@ -161,6 +161,8 @@ export async function handlePanelVariantTask(job: Job<TaskJobData>) {
     aspectRatio,
     style: artStyle || '与参考图风格一致',
   })
+
+  const prompt = applyNightVisualHardConstraints(promptBase, job.data.locale === 'en' ? 'en' : 'zh')
 
   _ulogInfo('[panel-variant] resolved variant prompt', prompt)
 

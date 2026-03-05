@@ -52,6 +52,7 @@ function NovelPromotionWorkspaceContent(props: NovelPromotionWorkspaceProps) {
         capabilityOverrides={vm.project.capabilityOverrides}
         videoRatio={vm.project.videoRatio}
         ttsRate={vm.project.ttsRate !== undefined && vm.project.ttsRate !== null ? String(vm.project.ttsRate) : undefined}
+        workflowMode={vm.project.workflowMode}
         onUpdateConfig={vm.actions.handleUpdateConfig}
         globalAssetText={vm.project.globalAssetText}
         projectName={project.name}

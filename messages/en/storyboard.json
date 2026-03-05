@@ -256,8 +256,9 @@
     },
     "imageEdit": {
         "title": "Edit Storyboard Image",
-        "subtitle": "Enter a modify instruction and optionally upload reference images or assets",
-        "promptPlaceholder": "Describe what to modify, e.g. change background color or adjust expression...",
+        "subtitle": "Image-to-image mode: instruction is optional. Leave it blank for a high-fidelity redraw from the base image, or add references/assets for guided edits.",
+        "editInstruction": "Edit Instruction (Optional)",
+        "promptPlaceholder": "Optional. Leave blank for pure image-to-image redraw, or describe changes such as background color and expression...",
         "referenceImagesLabel": "Reference Images",
         "referenceImagesHint": "(optional, paste supported)",
         "start": "Start Editing",

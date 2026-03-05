@@ -1,5 +1,7 @@
+import { Prisma } from "@prisma/client"
 import { prisma } from '@/lib/prisma'
 import type { StoryboardPanel } from '@/lib/storyboard-phases'
+import { parseSeedanceExtension } from '@/lib/seedance'
 
 export type JsonRecord = Record<string, unknown>
 
@@ -27,7 +29,7 @@ export function parseEffort(value: unknown): 'minimal' | 'low' | 'medium' | 'hig
 }
 
 export function parseTemperature(value: unknown): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return 0.7
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0.35
   return Math.max(0, Math.min(2, value))
 }
 
@@ -95,8 +97,10 @@ export function buildStoryboardJson(storyboards: PersistedStoryboard[]) {
 export async function persistStoryboardsAndPanels(params: {
   episodeId: string
   clipPanels: ClipPanelsResult[]
+  workflowMode?: string
 }) {
-  const { episodeId, clipPanels } = params
+  const { episodeId, clipPanels, workflowMode } = params
+  const isSeedance = workflowMode === 'seedance'
   return await prisma.$transaction(async (tx) => {
     await tx.novelPromotionStoryboard.deleteMany({
       where: { episodeId },
@@ -116,6 +120,12 @@ export async function persistStoryboardsAndPanels(params: {
       const persistedPanels: PersistedStoryboard['panels'] = []
       for (let i = 0; i < clipEntry.finalPanels.length; i += 1) {
         const panel = clipEntry.finalPanels[i]
+        const seedanceExt = isSeedance
+          ? parseSeedanceExtension(
+              panel as Record<string, unknown>,
+              i === clipEntry.finalPanels.length - 1,
+            )
+          : null
         const created = await tx.novelPromotionPanel.create({
           data: {
             storyboardId: storyboard.id,
@@ -131,6 +141,14 @@ export async function persistStoryboardsAndPanels(params: {
             photographyRules: panel.photographyPlan ? JSON.stringify(panel.photographyPlan) : null,
             actingNotes: panel.actingNotes ? JSON.stringify(panel.actingNotes) : null,
             duration: panel.duration || null,
+            ...(seedanceExt ? {
+              expectedDuration: seedanceExt.expected_duration ?? null,
+              shotRelation: seedanceExt.shot_relation ?? null,
+              pace: seedanceExt.pace ?? null,
+              characterLabels: seedanceExt.character_labels?.length
+                ? (seedanceExt.character_labels as unknown as Prisma.InputJsonValue)
+                : Prisma.JsonNull,
+            } : {}),
           },
           select: {
             id: true,

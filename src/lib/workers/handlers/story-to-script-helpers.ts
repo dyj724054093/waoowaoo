@@ -10,7 +10,7 @@ export function parseEffort(value: unknown): 'minimal' | 'low' | 'medium' | 'hig
 }
 
 export function parseTemperature(value: unknown): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return 0.7
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0.35
   return Math.max(0, Math.min(2, value))
 }
 
@@ -42,6 +42,13 @@ export async function persistAnalyzedCharacters(params: {
     const key = name.toLowerCase()
     if (params.existingNames.has(key)) continue
 
+    const expectedAppearances = Array.isArray(item.expected_appearances)
+      ? (item.expected_appearances as Array<Record<string, unknown>>).map((ea) => ({
+        id: typeof ea.id === 'number' ? ea.id : 1,
+        change_reason: asString(ea.change_reason) || '初始形象',
+      }))
+      : undefined
+
     const profileData = {
       role_level: item.role_level,
       archetype: item.archetype,
@@ -55,6 +62,7 @@ export async function persistAnalyzedCharacters(params: {
       visual_keywords: toStringArray(item.visual_keywords),
       gender: item.gender,
       age_range: item.age_range,
+      expected_appearances: expectedAppearances,
     }
 
     const createdRow = await prisma.novelPromotionCharacter.create({

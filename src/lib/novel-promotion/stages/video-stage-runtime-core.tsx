@@ -1,7 +1,7 @@
 'use client'
 
 import { logError as _ulogError } from '@/lib/logging/core'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import {
   VideoToolbar,
@@ -54,6 +54,15 @@ interface BatchCapabilityField {
 
 function toFieldLabel(field: string): string {
   return field.replace(/([A-Z])/g, ' $1').replace(/^./, (char) => char.toUpperCase())
+}
+
+type FinalRenderStatus = 'idle' | 'rendering' | 'completed' | 'failed'
+
+function normalizeFinalRenderStatus(value: unknown): FinalRenderStatus {
+  if (value === 'rendering') return 'rendering'
+  if (value === 'completed') return 'completed'
+  if (value === 'failed') return 'failed'
+  return 'idle'
 }
 
 export function useVideoStageRuntime({
@@ -197,6 +206,27 @@ export function useVideoStageRuntime({
   const [isConfirming, setIsConfirming] = useState(false)
   const [batchSelectedModel, setBatchSelectedModel] = useState('')
   const [batchGenerationOptions, setBatchGenerationOptions] = useState<VideoGenerationOptions>({})
+  const [finalRenderStatus, setFinalRenderStatus] = useState<FinalRenderStatus>('idle')
+  const [finalRenderTaskId, setFinalRenderTaskId] = useState<string | null>(null)
+  const [finalRenderOutputUrl, setFinalRenderOutputUrl] = useState<string | null>(null)
+  const [isFinalRendering, setIsFinalRendering] = useState(false)
+  const finalRenderPollTimerRef = useRef<number | null>(null)
+
+  const stopFinalRenderPolling = useCallback(() => {
+    if (finalRenderPollTimerRef.current) {
+      clearTimeout(finalRenderPollTimerRef.current)
+      finalRenderPollTimerRef.current = null
+    }
+    setIsFinalRendering(false)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (finalRenderPollTimerRef.current) {
+        clearTimeout(finalRenderPollTimerRef.current)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (allVideoModelOptions.length === 0) {
@@ -331,6 +361,123 @@ export function useVideoStageRuntime({
   const isAnyTaskRunning = runningCount > 0
   const canSubmitBatchGenerate = !!batchSelectedModel && batchMissingCapabilityFields.length === 0
 
+  const finalRenderTimeline = useMemo(() => {
+    return allPanels
+      .map((panel, index) => {
+        // If previous panel is linked to current panel as a first-last-frame pair,
+        // skip current panel to avoid duplicate/unnatural concatenation.
+        if (index > 0) {
+          const prev = allPanels[index - 1]
+          const prevKey = `${prev.storyboardId}-${prev.panelIndex}`
+          if (linkedPanels.get(prevKey)) {
+            return null
+          }
+        }
+
+        const panelKey = `${panel.storyboardId}-${panel.panelIndex}`
+        const preferLipSync = panelVideoPreference.get(panelKey) ?? true
+        const src = (preferLipSync ? panel.lipSyncVideoUrl : null) || panel.videoUrl || panel.lipSyncVideoUrl
+        if (!src) return null
+
+        const durationSeconds =
+          typeof panel.textPanel?.duration === 'number' && panel.textPanel.duration > 0
+            ? panel.textPanel.duration
+            : 3
+
+        return {
+          id: panel.panelId || `clip_${index + 1}`,
+          src,
+          durationInFrames: Math.max(1, Math.round(durationSeconds * 30)),
+        }
+      })
+      .filter((clip): clip is { id: string; src: string; durationInFrames: number } => !!clip)
+  }, [allPanels, linkedPanels, panelVideoPreference])
+
+  const pollFinalRenderStatus = useCallback(async (editorProjectId: string) => {
+    try {
+      const response = await fetch(
+        `/api/novel-promotion/${projectId}/editor/render?id=${editorProjectId}&episodeId=${episodeId}`,
+      )
+      if (!response.ok) {
+        throw new Error(`POLL_FINAL_RENDER_FAILED:${response.status}`)
+      }
+
+      const data = await response.json()
+      const status = normalizeFinalRenderStatus(data?.status)
+      const nextTaskId = typeof data?.renderTaskId === 'string' ? data.renderTaskId : null
+      const nextOutputUrl = typeof data?.outputUrl === 'string' ? data.outputUrl : null
+
+      setFinalRenderStatus(status)
+      setFinalRenderTaskId(nextTaskId)
+      setFinalRenderOutputUrl(nextOutputUrl)
+
+      if (status === 'completed' || status === 'failed') {
+        stopFinalRenderPolling()
+        return
+      }
+
+      finalRenderPollTimerRef.current = window.setTimeout(() => {
+        void pollFinalRenderStatus(editorProjectId)
+      }, 2500)
+    } catch (error) {
+      _ulogError('Poll final render status failed:', error)
+      setFinalRenderStatus('failed')
+      stopFinalRenderPolling()
+    }
+  }, [episodeId, projectId, stopFinalRenderPolling])
+
+  const handleRenderFinalVideo = useCallback(async () => {
+    if (finalRenderTimeline.length === 0) {
+      alert(t('toolbar.noVideos'))
+      return
+    }
+
+    setFinalRenderOutputUrl(null)
+    setFinalRenderTaskId(null)
+    setFinalRenderStatus('rendering')
+    setIsFinalRendering(true)
+
+    try {
+      const response = await fetch(`/api/novel-promotion/${projectId}/editor/render`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          episodeId,
+          quality: 'high',
+          projectData: {
+            episodeId,
+            config: {
+              fps: 30,
+              width: 1920,
+              height: 1080,
+            },
+            timeline: finalRenderTimeline,
+          },
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`START_FINAL_RENDER_FAILED:${response.status}`)
+      }
+
+      const data = await response.json()
+      const editorProjectId = typeof data?.editorProjectId === 'string' ? data.editorProjectId : ''
+      const taskId = typeof data?.renderTaskId === 'string' ? data.renderTaskId : null
+
+      if (!editorProjectId) {
+        throw new Error('EDITOR_PROJECT_ID_MISSING')
+      }
+
+      setFinalRenderStatus(normalizeFinalRenderStatus(data?.status || 'rendering'))
+      setFinalRenderTaskId(taskId)
+      void pollFinalRenderStatus(editorProjectId)
+    } catch (error) {
+      _ulogError('Render final video failed:', error)
+      setFinalRenderStatus('failed')
+      stopFinalRenderPolling()
+    }
+  }, [episodeId, finalRenderTimeline, pollFinalRenderStatus, projectId, stopFinalRenderPolling, t])
+
   const handleOpenBatchGenerateModal = useCallback(() => {
     if (isAnyTaskRunning) return
     setIsBatchConfigOpen(true)
@@ -372,6 +519,12 @@ export function useVideoStageRuntime({
         isDownloading={isDownloading}
         onGenerateAll={handleOpenBatchGenerateModal}
         onDownloadAll={handleDownloadAllVideos}
+        onRenderFinal={handleRenderFinalVideo}
+        finalRenderStatus={finalRenderStatus}
+        isFinalRendering={isFinalRendering}
+        finalRenderOutputUrl={finalRenderOutputUrl}
+        finalRenderTaskId={finalRenderTaskId}
+        finalRenderDisabled={isAnyTaskRunning || finalRenderTimeline.length === 0}
         onBack={onBack}
         onEnterEditor={onEnterEditor}
         videosReady={videosWithUrl > 0}

@@ -40,7 +40,7 @@ export async function handleStoryToScriptTask(job: Job<TaskJobData>) {
   const episodeId = episodeIdRaw.trim()
   const contentRaw = asString(payload.content)
   const inputModel = asString(payload.model).trim()
-  const reasoning = payload.reasoning !== false
+  const reasoning = payload.reasoning === true
   const requestedReasoningEffort = parseEffort(payload.reasoningEffort)
   const temperature = parseTemperature(payload.temperature)
 
@@ -102,7 +102,7 @@ export async function handleStoryToScriptTask(job: Job<TaskJobData>) {
   })
   const capabilityReasoningEffort = llmCapabilityOptions.reasoningEffort
   const reasoningEffort = requestedReasoningEffort
-    || (isReasoningEffort(capabilityReasoningEffort) ? capabilityReasoningEffort : 'high')
+    || (isReasoningEffort(capabilityReasoningEffort) ? capabilityReasoningEffort : 'medium')
 
   const mergedContent = contentRaw.trim() || (episode.novelText || '')
   if (!mergedContent.trim()) {
@@ -119,6 +119,7 @@ export async function handleStoryToScriptTask(job: Job<TaskJobData>) {
 
   const characterPromptTemplate = getPromptTemplate(PROMPT_IDS.NP_AGENT_CHARACTER_PROFILE, job.data.locale)
   const locationPromptTemplate = getPromptTemplate(PROMPT_IDS.NP_SELECT_LOCATION, job.data.locale)
+  const locationRecallPromptTemplate = getPromptTemplate(PROMPT_IDS.NP_SELECT_LOCATION_RECALL, job.data.locale)
   const clipPromptTemplate = getPromptTemplate(PROMPT_IDS.NP_AGENT_CLIP, job.data.locale)
   const screenplayPromptTemplate = getPromptTemplate(PROMPT_IDS.NP_SCREENPLAY_CONVERSION, job.data.locale)
 
@@ -232,6 +233,7 @@ export async function handleStoryToScriptTask(job: Job<TaskJobData>) {
                     promptTemplates: {
                       characterPromptTemplate,
                       locationPromptTemplate,
+                      locationRecallPromptTemplate,
                       clipPromptTemplate,
                       screenplayPromptTemplate,
                     },

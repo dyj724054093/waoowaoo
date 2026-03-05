@@ -22,6 +22,7 @@ import { PRIMARY_APPEARANCE_INDEX } from '@/lib/constants'
 import { executeAiVisionStep } from '@/lib/ai-runtime'
 import { buildPrompt, PROMPT_IDS } from '@/lib/prompt-i18n'
 import { createScopedLogger } from '@/lib/logging/core'
+import { buildImageEditPrompt } from './image-edit-prompt'
 
 const logger = createScopedLogger({ module: 'worker.asset-hub-modify' })
 
@@ -110,7 +111,7 @@ export async function handleAssetHubModifyTask(job: Job<TaskJobData>) {
     const normalizedExtras = await normalizeReferenceImagesForGeneration(extraReferenceInputs)
     const referenceImages = Array.from(new Set([requiredReference, ...normalizedExtras]))
 
-    const prompt = `请根据以下指令修改图片，保持人物核心特征一致：\n${payload.modifyPrompt || ''}`
+    const prompt = buildImageEditPrompt('character', typeof payload.modifyPrompt === 'string' ? payload.modifyPrompt : '')
     const source = await resolveImageSourceFromGeneration(job, {
       userId,
       modelId: editModel,
@@ -193,7 +194,7 @@ export async function handleAssetHubModifyTask(job: Job<TaskJobData>) {
     const normalizedExtras = await normalizeReferenceImagesForGeneration(extraReferenceInputs)
     const referenceImages = Array.from(new Set([requiredReference, ...normalizedExtras]))
 
-    const prompt = `请根据以下指令修改场景图片，保持整体风格一致：\n${payload.modifyPrompt || ''}`
+    const prompt = buildImageEditPrompt('location', typeof payload.modifyPrompt === 'string' ? payload.modifyPrompt : '')
     const source = await resolveImageSourceFromGeneration(job, {
       userId,
       modelId: editModel,

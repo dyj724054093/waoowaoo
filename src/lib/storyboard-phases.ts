@@ -11,6 +11,7 @@ import { logAIAnalysis } from '@/lib/logging/semantic'
 import { buildCharactersIntroduction } from '@/lib/constants'
 import type { Locale } from '@/i18n/routing'
 import { getPromptTemplate, PROMPT_IDS } from '@/lib/prompt-i18n'
+import { findLocationByReferenceName } from '@/lib/location-matching'
 
 // 阶段类型
 export type StoryboardPhase = 1 | '2-cinematography' | '2-acting' | 3
@@ -29,6 +30,8 @@ type CharacterAppearance = {
 export type CharacterAsset = {
     name: string
     appearances?: CharacterAppearance[]
+    profileData?: string | null
+    introduction?: string | null
 }
 
 export type LocationAsset = {
@@ -206,10 +209,39 @@ export function getFilteredFullDescription(characters: CharacterAsset[], clipCha
 // 根据 clip.location 筛选场景描述
 export function getFilteredLocationsDescription(locations: LocationAsset[], clipLocation: string | null): string {
     if (!clipLocation) return '无'
-    const location = locations.find((l) => l.name.toLowerCase() === clipLocation.toLowerCase())
+    const location = findLocationByReferenceName(locations, clipLocation)
     if (!location) return '无'
     const selectedImage = location.images?.find((img) => img.isSelected) || location.images?.[0]
     return selectedImage?.description || '无描述'
+}
+
+// 构建角色档案摘要（身份、辨识标志、性格、视觉关键词）
+export function buildCharacterProfileSummary(characters: CharacterAsset[], clipCharacters: ClipCharacterRef[]): string {
+    if (clipCharacters.length === 0) return '无'
+    const charNames = extractCharacterNames(clipCharacters)
+    const summaries = characters
+        .filter((c) => charNames.some(name => characterNameMatches(c.name, name)))
+        .map((c) => {
+            if (!c.profileData) return null
+            let profile: Record<string, unknown>
+            try {
+                profile = JSON.parse(c.profileData) as Record<string, unknown>
+            } catch {
+                return null
+            }
+            const parts: string[] = [`【${c.name}】`]
+            if (profile.occupation) parts.push(`身份：${String(profile.occupation)}`)
+            if (profile.primary_identifier) parts.push(`辨识标志：${String(profile.primary_identifier)}`)
+            const tags = Array.isArray(profile.personality_tags) ? profile.personality_tags.filter((t): t is string => typeof t === 'string') : []
+            if (tags.length > 0) parts.push(`性格：${tags.join('、')}`)
+            const keywords = Array.isArray(profile.visual_keywords) ? profile.visual_keywords.filter((k): k is string => typeof k === 'string') : []
+            if (keywords.length > 0) parts.push(`视觉关键词：${keywords.join('、')}`)
+            if (profile.gender) parts.push(`${String(profile.gender)}`)
+            if (profile.age_range) parts.push(`${String(profile.age_range)}`)
+            return parts.join(' | ')
+        })
+        .filter(Boolean)
+    return summaries.length > 0 ? summaries.join('\n') : '无'
 }
 
 // 格式化Clip标识（支持SRT模式和Agent模式）
@@ -584,11 +616,13 @@ export async function executePhase3(
 
     const filteredFullDescription = getFilteredFullDescription(novelPromotionData.characters, clipCharacters)
     const filteredLocationsDescription = getFilteredLocationsDescription(novelPromotionData.locations, clipLocation)
+    const profileSummary = buildCharacterProfileSummary(novelPromotionData.characters, clipCharacters)
 
     // 构建提示词
     const detailPrompt = detailPromptTemplate
         .replace('{panels_json}', JSON.stringify(planPanels, null, 2))
         .replace('{characters_age_gender}', filteredFullDescription)  // 改用完整描述
+        .replace('{characters_profile_summary}', profileSummary)
         .replace('{locations_description}', filteredLocationsDescription)
 
     // 记录发送给 AI 的完整 prompt

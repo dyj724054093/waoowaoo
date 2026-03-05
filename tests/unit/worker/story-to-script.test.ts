@@ -1,4 +1,4 @@
-import type { Job } from 'bullmq'
+﻿import type { Job } from 'bullmq'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { TASK_TYPE, type TaskJobData } from '@/lib/task/types'
 
@@ -81,6 +81,7 @@ vi.mock('@/lib/prompt-i18n', () => ({
   PROMPT_IDS: {
     NP_AGENT_CHARACTER_PROFILE: 'a',
     NP_SELECT_LOCATION: 'b',
+    NP_SELECT_LOCATION_RECALL: 'e',
     NP_AGENT_CLIP: 'c',
     NP_SCREENPLAY_CONVERSION: 'd',
   },
@@ -223,3 +224,4 @@ describe('worker story-to-script behavior', () => {
     await expect(handleStoryToScriptTask(job)).rejects.toThrow('STORY_TO_SCRIPT_PARTIAL_FAILED')
   })
 })
+

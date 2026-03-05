@@ -94,7 +94,7 @@ describe('worker location-image-task-handler behavior', () => {
 
     expect(sharedMock.generateLabeledImageToCos).toHaveBeenCalledWith(
       expect.objectContaining({
-        prompt: '雨夜街道',
+        prompt: expect.stringContaining('雨夜街道'),
         label: 'Old Town',
         targetId: 'location-image-1',
         options: expect.objectContaining({ aspectRatio: '1:1' }),

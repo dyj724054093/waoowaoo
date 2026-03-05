@@ -1,26 +1,34 @@
-You are a location asset extraction specialist.
-Extract locations that need dedicated background assets.
+﻿You are a location asset extraction specialist.
+Extract locations that need dedicated background assets for this episode.
 
-Input text:
+[Input Text]
 {input}
 
-Existing location library:
+[Existing Location Library]
 {locations_lib_name}
 
-Selection rules:
-1. Include locations where meaningful story actions happen.
-2. Exclude abstract/metaphorical spaces and one-off passing mentions.
-3. Deduplicate aliases of the same location.
-4. Prefer exact library names when a location already exists.
+[Selection Rules]
+1. Extract locations where independent narrative actions happen (observe, hide, infiltrate, fight, search, escape, dialogue).
+2. Functional sub-areas inside one complex can be separate locations only when they support independent actions (e.g., hall, rooftop, gate zone, pharmacy, tunnel, fence line).
+3. Exclude abstract/metaphorical locations and passing mentions without stay/action.
+4. If a location already exists in the library, you MUST still output it and reuse the exact library name.
+5. Do not over-segment. Split only when both function and action are clearly independent.
+6. Do not deduplicate away all results only because they exist in the library.
 
-For each selected location, generate 3 wide-angle environment descriptions.
-Each description should:
-- start with location name in brackets: "[Location Name] ..."
-- describe spatial layout, depth layers, major objects, and lighting direction
-- remain environment-only (no named protagonist actions)
-- use concise, production-ready English
+[Description Rules]
+For each selected location, provide 3 descriptions with distinct goals:
+- Description 1: full spatial establishing view (boundaries + foreground/mid/background)
+- Description 2: entrances/routes/blockers for storyboard scheduling
+- Description 3: depth + major light sources for atmosphere consistency
 
-Output format (JSON only):
+Each description must:
+- start with: "[Location Name] ..."
+- be environment-only (no specific character names/actions)
+- include spatial layers and light direction
+- be concise and production-ready
+
+[Output]
+JSON only (no markdown, no explanations, no <think>):
 {
   "locations": [
     {
@@ -37,7 +45,6 @@ Output format (JSON only):
   ]
 }
 
-Strict constraints:
-1. JSON only.
-2. If no valid location exists, return: {"locations":[]}.
-  
+[Strict]
+- If no valid location exists, return: {"locations":[]}.
+- Do not output undefined fields.

@@ -128,8 +128,8 @@ export const ART_STYLES = [
     value: 'american-comic',
     label: '漫画风',
     preview: '漫',
-    promptZh: '日式动漫风格',
-    promptEn: 'Japanese anime style'
+    promptZh: '日式动漫风格，清晰轮廓线条，平面化光影，干净利落的2D画面',
+    promptEn: 'Japanese anime style, clean outlines, flat shading, crisp 2D visual'
   },
   {
     value: 'chinese-comic',
@@ -169,6 +169,44 @@ export function getArtStylePrompt(
   const style = ART_STYLES.find(s => s.value === artStyle)
   if (!style) return ''
   return locale === 'en' ? style.promptEn : style.promptZh
+}
+
+
+/**
+ * 在基础风格词上追加强约束。当前仅对 realistic 做硬约束，避免回落到卡通/动漫。
+ */
+export function getEffectiveArtStylePrompt(
+  artStyle: string | null | undefined,
+  locale: 'zh' | 'en',
+): string {
+  const base = getArtStylePrompt(artStyle, locale)
+  if (!base) return ''
+  if (artStyle !== 'realistic') return base
+
+  if (locale === 'en') {
+    return `${base}. Photorealistic human style only; forbid anime, cartoon, 2D illustration, line-art, cel-shading, chibi, comic rendering.`
+  }
+  return `${base}，仅允许真人照片级写实风格，严禁动漫、卡通、二次元、插画、线稿、赛璐璐、Q版、漫画渲染。`
+}
+
+const NIGHT_VISUAL_CUE_RE = /(深夜|夜晚|夜里|午夜|夜色|夜间|night|midnight|late night)/i
+
+/**
+ * 夜景硬约束：当 prompt 明确是夜晚语义时，附加禁止太阳/日光与高曝光天空的硬限制。
+ */
+export function applyNightVisualHardConstraints(
+  prompt: string,
+  locale: 'zh' | 'en',
+): string {
+  if (!prompt || !NIGHT_VISUAL_CUE_RE.test(prompt)) return prompt
+
+  const hardBlock = locale === 'en'
+    ? '[Night hard constraints] This scene is night/deep-night. Forbidden elements: sun, sunlight, daylight, sunrise glow, sunset glow, bright sky, lens flare, overexposed highlights. Moon must be dim silhouette only and cannot light up the whole sky. Keep low exposure, high shadow ratio, and controlled highlights.'
+    : '【夜景硬约束】当前场景为夜晚/深夜。禁止元素：太阳、阳光、日光、晨光、夕阳余晖、明亮天空、镜头光晕、高光过曝。月亮仅可作为微弱轮廓光，不能照亮整片天空。整体必须低曝光、高阴影占比、受控高光。'
+
+  if (prompt.includes(hardBlock)) return prompt
+  return `${prompt}
+${hardBlock}`
 }
 
 // 角色形象生成的系统后缀（始终添加到提示词末尾，不显示给用户）- 左侧面部特写+右侧三视图

@@ -37,8 +37,8 @@ export type LLMStageStreamCardProps = {
 }
 
 const PROGRESS_KEY_PREFIX = 'progress.'
-const REASONING_HEADER = '【思考过程】'
-const FINAL_HEADER = '【最终结果】'
+const REASONING_HEADER = '\u3010\u601d\u8003\u8fc7\u7a0b\u3011'
+const FINAL_HEADER = '\u3010\u6700\u7ec8\u7ed3\u679c\u3011'
 
 function statusClass(status: LLMStageViewStatus): string {
   if (status === 'completed') return 'glass-chip glass-chip-success'
@@ -92,7 +92,7 @@ function splitStructuredOutput(raw: string): {
     return {
       hasStructured: true,
       showReasoning: true,
-      showFinal: true,
+      showFinal: false,
       reasoning: normalized.slice(REASONING_HEADER.length).trim(),
       finalText: '',
     }
@@ -100,7 +100,7 @@ function splitStructuredOutput(raw: string): {
 
   return {
     hasStructured: true,
-    showReasoning: true,
+    showReasoning: false,
     showFinal: true,
     reasoning: '',
     finalText: normalized.slice(FINAL_HEADER.length).trim(),
@@ -312,7 +312,7 @@ export default function LLMStageStreamCard({
 
         {errorMessage && (
           <div className="mt-3 flex items-center gap-2 rounded-lg bg-[var(--glass-tone-danger-bg)] px-4 py-2.5 text-[var(--glass-tone-danger-fg)]">
-            <span className="text-base">⚠️</span>
+            <span className="text-base">{'\u26a0\ufe0f'}</span>
             <span className="text-sm font-medium">{errorMessage}</span>
           </div>
         )}
@@ -372,7 +372,7 @@ export default function LLMStageStreamCard({
                     </div>
                     <pre className="min-h-[110px] whitespace-pre-wrap break-words px-3 py-3 font-mono text-[14px] leading-7 text-[var(--glass-text-secondary)]">
                       {structuredOutput.reasoning || (structuredOutput.finalText ? t('stageCard.reasoningNotProvided') : t('stageCard.waitingModelOutput'))}
-                      {showCursor && !structuredOutput.finalText ? <span className="animate-pulse text-[var(--glass-accent-from)]">▋</span> : null}
+                      {showCursor && !structuredOutput.finalText ? <span className="animate-pulse text-[var(--glass-accent-from)]">{'\u258b'}</span> : null}
                     </pre>
                   </div>
                 ) : null}
@@ -383,7 +383,7 @@ export default function LLMStageStreamCard({
                     </div>
                     <pre className="min-h-[110px] whitespace-pre-wrap break-words px-3 py-3 font-mono text-[14px] leading-7 text-[var(--glass-text-secondary)]">
                       {structuredOutput.finalText || t('stageCard.waitingModelOutput')}
-                      {showCursor && !!structuredOutput.finalText ? <span className="animate-pulse text-[var(--glass-accent-from)]">▋</span> : null}
+                      {showCursor && !!structuredOutput.finalText ? <span className="animate-pulse text-[var(--glass-accent-from)]">{'\u258b'}</span> : null}
                     </pre>
                   </div>
                 ) : null}
@@ -391,7 +391,7 @@ export default function LLMStageStreamCard({
             ) : (
               <pre className="whitespace-pre-wrap break-words font-mono text-[14px] leading-7 text-[var(--glass-text-secondary)]">
                 {renderedOutputText || resolvedPlaceholderText}
-                {showCursor ? <span className="animate-pulse text-[var(--glass-accent-from)]">▋</span> : null}
+                {showCursor ? <span className="animate-pulse text-[var(--glass-accent-from)]">{'\u258b'}</span> : null}
               </pre>
             )}
           </div>

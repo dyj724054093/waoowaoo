@@ -51,6 +51,7 @@ interface SettingsModalProps {
     videoRatio?: string
     capabilityOverrides?: CapabilitySelections
     ttsRate?: string
+    workflowMode?: string
     onArtStyleChange?: (value: string) => void
     onAnalysisModelChange?: (value: string) => void
     onCharacterModelChange?: (value: string) => void
@@ -62,6 +63,7 @@ interface SettingsModalProps {
     onVideoRatioChange?: (value: string) => void
     onCapabilityOverridesChange?: (value: CapabilitySelections) => void
     onTTSRateChange?: (value: string) => void
+    onWorkflowModeChange?: (value: string) => void
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -133,6 +135,7 @@ export function SettingsModal({
     videoRatio = '9:16',
     capabilityOverrides,
     ttsRate,
+    workflowMode = 'agent',
     onArtStyleChange,
     onAnalysisModelChange,
     onCharacterModelChange,
@@ -143,6 +146,7 @@ export function SettingsModal({
     onVideoRatioChange,
     onCapabilityOverridesChange,
     onTTSRateChange,
+    onWorkflowModeChange,
 }: SettingsModalProps) {
     const t = useTranslations('configModal')
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saved'>('idle')
@@ -456,6 +460,30 @@ export function SettingsModal({
                                 options={VIDEO_RATIOS}
                             />
                         </div>
+                    </div>
+
+                    <div className="glass-surface-soft p-5 sm:p-6 space-y-4">
+                        <h3 className="text-sm font-semibold text-[var(--glass-text-tertiary)]">{t('workflowMode') || 'Workflow Mode'}</h3>
+                        <div className="flex gap-2">
+                            {(['agent', 'seedance'] as const).map((mode) => (
+                                <button
+                                    key={mode}
+                                    onClick={() => { handleChange(onWorkflowModeChange)(mode) }}
+                                    className={`glass-btn-base px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                                        workflowMode === mode
+                                            ? 'glass-btn-accent'
+                                            : 'glass-btn-soft'
+                                    }`}
+                                >
+                                    {mode === 'agent' ? (t('workflowModeAgent') || 'Agent') : (t('workflowModeSeedance') || 'Seedance')}
+                                </button>
+                            ))}
+                        </div>
+                        {workflowMode === 'seedance' && (
+                            <p className="text-xs text-[var(--glass-text-tertiary)]">
+                                {t('seedanceDescription') || 'Seedance mode enhances storyboard with rhythm control, character consistency, and scene color anchoring.'}
+                            </p>
+                        )}
                     </div>
                 </div>
             </div>

@@ -10,7 +10,7 @@ const runtime = vi.hoisted(() => ({
   queryClient: {
     invalidateQueries: vi.fn(async (_arg?: InvalidateArg) => undefined),
   },
-  effectCleanup: null as EffectCleanup,
+  effectCleanup: null as unknown as EffectCleanup,
   scheduledTimers: [] as Array<() => void>,
 }))
 
@@ -88,7 +88,7 @@ function hasInvalidation(predicate: (arg: InvalidateArg) => boolean) {
 describe('sse invalidation behavior', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    runtime.effectCleanup = null
+    runtime.effectCleanup = null as unknown as EffectCleanup
     runtime.scheduledTimers = []
     FakeEventSource.instances = []
 

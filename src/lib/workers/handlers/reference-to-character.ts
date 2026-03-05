@@ -10,7 +10,7 @@ import { getUserModelConfig } from '@/lib/config-service'
 import {
   CHARACTER_IMAGE_BANANA_RATIO,
   addCharacterPromptSuffix,
-  getArtStylePrompt,
+  getEffectiveArtStylePrompt,
 } from '@/lib/constants'
 import { encodeImageUrls } from '@/lib/contracts/image-urls-contract'
 import { generateUniqueKey, getSignedUrl, uploadToCOS } from '@/lib/cos'
@@ -190,7 +190,7 @@ export async function handleReferenceToCharacterTask(job: Job<TaskJobData>) {
     }
   }
 
-  const artStylePrompt = getArtStylePrompt(artStyle, job.data.locale)
+  const artStylePrompt = getEffectiveArtStylePrompt(artStyle, job.data.locale)
 
   const basePrompt = customDescription || buildPrompt({
     promptId: PROMPT_IDS.CHARACTER_REFERENCE_TO_SHEET,
@@ -198,7 +198,7 @@ export async function handleReferenceToCharacterTask(job: Job<TaskJobData>) {
   })
   let prompt = addCharacterPromptSuffix(basePrompt)
   if (artStylePrompt) {
-    prompt = `${prompt}，${artStylePrompt}`
+    prompt = `${artStylePrompt}，${prompt}`
   }
 
   const useReferenceImages = !customDescription

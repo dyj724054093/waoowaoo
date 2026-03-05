@@ -127,7 +127,7 @@ function buildJob(payload: Record<string, unknown>, type: TaskType): Job<TaskJob
 }
 
 function readGenerateCall(index: number) {
-  const call = generatorApiMock.generateImage.mock.calls[index]
+  const call = generatorApiMock.generateImage.mock.calls[index] as unknown[] | undefined as unknown[] | undefined
   if (!call) {
     return {
       prompt: '',
@@ -161,7 +161,7 @@ describe('worker reference-to-character', () => {
     const job = buildJob(
       {
         referenceImageUrls: ['https://example.com/ref-a.png', 'https://example.com/ref-b.png'],
-        customDescription: '冷静黑发角色',
+        customDescription: '鍐烽潤榛戝彂瑙掕壊',
         characterName: 'Hero',
       },
       TASK_TYPE.ASSET_HUB_REFERENCE_TO_CHARACTER,
@@ -173,7 +173,7 @@ describe('worker reference-to-character', () => {
     expect(generatorApiMock.generateImage).toHaveBeenCalledTimes(3)
 
     const { prompt, options } = readGenerateCall(0)
-    expect(prompt).toContain('冷静黑发角色')
+    expect(prompt).toContain('鍐烽潤榛戝彂瑙掕壊')
     expect(prompt).toContain(CHARACTER_PROMPT_SUFFIX)
     expect(options.aspectRatio).toBe(CHARACTER_IMAGE_BANANA_RATIO)
     expect(options.referenceImages).toBeUndefined()
@@ -202,7 +202,7 @@ describe('worker reference-to-character', () => {
     expect(options.referenceImages).toEqual(['https://example.com/ref-a.png', 'https://example.com/ref-b.png'])
     expect(options.aspectRatio).toBe(CHARACTER_IMAGE_BANANA_RATIO)
 
-    const updateArg = prismaMock.globalCharacterAppearance.update.mock.calls[0]?.[0] as {
+    const updateArg = (prismaMock.globalCharacterAppearance.update.mock.calls[0] as unknown[] | undefined)?.[0] as {
       data?: Record<string, unknown>
       where?: Record<string, unknown>
     } | undefined

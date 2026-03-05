@@ -256,8 +256,9 @@
     },
     "imageEdit": {
         "title": "编辑分镜",
-        "subtitle": "输入修改指令，可选择上传参考图片和资产",
-        "promptPlaceholder": "描述你想要修改的内容，例如：改变背景颜色、调整人物表情...",
+        "subtitle": "图生图模式：修改指令可选；留空时将基于原图高保真重绘。可额外上传参考图和资产。",
+        "editInstruction": "修改指令（可选）",
+        "promptPlaceholder": "可留空直接图生图重绘；如需修改可输入，例如：改变背景颜色、调整人物表情...",
         "referenceImagesLabel": "参考图片",
         "referenceImagesHint": "(可选，支持粘贴)",
         "start": "开始编辑",

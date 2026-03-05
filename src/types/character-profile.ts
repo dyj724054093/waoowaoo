@@ -43,6 +43,9 @@ export interface CharacterProfileData {
 
     /** 年龄段描述 */
     age_range: string
+
+    /** 预期出场形象列表 */
+    expected_appearances?: Array<{ id: number; change_reason: string }>
 }
 
 /**

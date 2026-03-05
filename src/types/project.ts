@@ -56,7 +56,10 @@ export interface CharacterAppearance {
   // 任务态字段（由 tasks + hook 派生，不再依赖数据库持久化）
   imageTaskRunning?: boolean
   imageErrorMessage?: string | null  // 图片生成错误消息
-  lastError?: { code: string; message: string } | null  // 结构化错误（来自 task target state）
+  lastError?: { code: string; message: string } | null
+  taskPhase?: 'idle' | 'queued' | 'processing' | 'completed' | 'failed'
+  runningTaskId?: string | null
+  runningTaskType?: string | null  // 结构化错误（来自 task target state）
 }
 
 // 角色
@@ -93,7 +96,10 @@ export interface LocationImage {
   // 任务态字段（由 tasks + hook 派生，不再依赖数据库持久化）
   imageTaskRunning?: boolean
   imageErrorMessage?: string | null  // 图片生成错误消息
-  lastError?: { code: string; message: string } | null  // 结构化错误（来自 task target state）
+  lastError?: { code: string; message: string } | null
+  taskPhase?: 'idle' | 'queued' | 'processing' | 'completed' | 'failed'
+  runningTaskId?: string | null
+  runningTaskType?: string | null  // 结构化错误（来自 task target state）
 }
 
 // 场景
@@ -126,7 +132,7 @@ export interface AssetLibraryLocation {
 // ============================================
 
 // 工作流模式
-export type WorkflowMode = 'srt' | 'agent'
+export type WorkflowMode = 'srt' | 'agent' | 'seedance'
 
 // Clip类型（兼容SRT和Agent两种模式）
 export interface NovelPromotionClip {

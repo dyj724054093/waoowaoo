@@ -94,7 +94,7 @@ describe('api specific - user api-config PUT provider uniqueness', () => {
       },
     })
 
-    const res = await route.PUT(req)
+    const res = await route.PUT(req, {} as never)
     expect(res.status).toBe(200)
     expect(prismaMock.userPreference.upsert).toHaveBeenCalledTimes(1)
 
@@ -134,7 +134,7 @@ describe('api specific - user api-config PUT provider uniqueness', () => {
       },
     })
 
-    const res = await route.PUT(req)
+    const res = await route.PUT(req, {} as never)
     expect(res.status).toBe(200)
 
     const savedProviders = readSavedProvidersFromUpsert()
@@ -162,7 +162,7 @@ describe('api specific - user api-config PUT provider uniqueness', () => {
       },
     })
 
-    const res = await route.PUT(req)
+    const res = await route.PUT(req, {} as never)
     expect(res.status).toBe(400)
     expect(prismaMock.userPreference.upsert).not.toHaveBeenCalled()
   })
@@ -183,7 +183,7 @@ describe('api specific - user api-config PUT provider uniqueness', () => {
       },
     })
 
-    const res = await route.PUT(req)
+    const res = await route.PUT(req, {} as never)
     expect(res.status).toBe(400)
     expect(prismaMock.userPreference.upsert).not.toHaveBeenCalled()
   })
@@ -213,7 +213,7 @@ describe('api specific - user api-config PUT provider uniqueness', () => {
       },
     })
 
-    const res = await route.PUT(req)
+    const res = await route.PUT(req, {} as never)
     expect(res.status).toBe(400)
     expect(prismaMock.userPreference.upsert).not.toHaveBeenCalled()
   })
@@ -255,7 +255,7 @@ describe('api specific - user api-config PUT provider uniqueness', () => {
       },
     })
 
-    const res = await route.PUT(req)
+    const res = await route.PUT(req, {} as never)
     expect(res.status).toBe(200)
     expect(prismaMock.userPreference.upsert).toHaveBeenCalledTimes(1)
   })
@@ -289,7 +289,7 @@ describe('api specific - user api-config PUT provider uniqueness', () => {
       },
     })
 
-    const res = await route.PUT(req)
+    const res = await route.PUT(req, {} as never)
     expect(res.status).toBe(400)
     expect(prismaMock.userPreference.upsert).not.toHaveBeenCalled()
   })
@@ -328,7 +328,7 @@ describe('api specific - user api-config PUT provider uniqueness', () => {
       },
     })
 
-    const res = await route.PUT(req)
+    const res = await route.PUT(req, {} as never)
     expect(res.status).toBe(400)
     expect(prismaMock.userPreference.upsert).not.toHaveBeenCalled()
   })
@@ -361,7 +361,7 @@ describe('api specific - user api-config PUT provider uniqueness', () => {
       method: 'GET',
     })
 
-    const res = await route.GET(req)
+    const res = await route.GET(req, {} as never)
     expect(res.status).toBe(200)
     const json = await res.json() as { models?: Array<{ customPricing?: { llm?: { inputPerMillion?: number; outputPerMillion?: number } } }> }
     const model = Array.isArray(json.models) ? json.models[0] : null

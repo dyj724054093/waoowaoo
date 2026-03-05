@@ -14,8 +14,21 @@ interface VideoToolbarProps {
   onGenerateAll: () => void
   onDownloadAll: () => void
   onBack: () => void
-  onEnterEditor?: () => void  // 进入剪辑器
-  videosReady?: boolean  // 是否有视频可以剪辑
+  onEnterEditor?: () => void
+  videosReady?: boolean
+  onRenderFinal?: () => void
+  finalRenderStatus?: 'idle' | 'rendering' | 'completed' | 'failed'
+  isFinalRendering?: boolean
+  finalRenderOutputUrl?: string | null
+  finalRenderTaskId?: string | null
+  finalRenderDisabled?: boolean
+}
+
+function getFinalStatusLabel(status: 'idle' | 'rendering' | 'completed' | 'failed' | undefined): string {
+  if (status === 'rendering') return 'Final video rendering'
+  if (status === 'completed') return 'Final video ready'
+  if (status === 'failed') return 'Final video failed'
+  return 'Final video not started'
 }
 
 export default function VideoToolbar({
@@ -29,7 +42,13 @@ export default function VideoToolbar({
   onDownloadAll,
   onBack,
   onEnterEditor,
-  videosReady = false
+  videosReady = false,
+  onRenderFinal,
+  finalRenderStatus = 'idle',
+  isFinalRendering = false,
+  finalRenderOutputUrl,
+  finalRenderTaskId,
+  finalRenderDisabled = false,
 }: VideoToolbarProps) {
   const t = useTranslations('video')
   const videoTaskRunningState = isAnyTaskRunning
@@ -48,6 +67,7 @@ export default function VideoToolbar({
       hasOutput: videosWithUrl > 0,
     })
     : null
+
   return (
     <div className="glass-surface p-4">
       <div className="flex items-center justify-between">
@@ -68,6 +88,7 @@ export default function VideoToolbar({
             )}
           </span>
         </div>
+
         <div className="flex items-center gap-2">
           <button
             onClick={onGenerateAll}
@@ -83,6 +104,7 @@ export default function VideoToolbar({
               </>
             )}
           </button>
+
           <button
             onClick={onDownloadAll}
             disabled={videosWithUrl === 0 || isDownloading}
@@ -98,6 +120,41 @@ export default function VideoToolbar({
               </>
             )}
           </button>
+
+          {onRenderFinal && (
+            <button
+              onClick={onRenderFinal}
+              disabled={finalRenderDisabled || isFinalRendering}
+              className="glass-btn-base glass-btn-tone-success flex items-center gap-2 px-4 py-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              title={getFinalStatusLabel(finalRenderStatus)}
+            >
+              {isFinalRendering ? (
+                <>
+                  <AppIcon name="loader" className="w-4 h-4 animate-spin" />
+                  <span>Rendering Final</span>
+                </>
+              ) : (
+                <>
+                  <AppIcon name="play" className="w-4 h-4" />
+                  <span>Generate Final</span>
+                </>
+              )}
+            </button>
+          )}
+
+          {finalRenderOutputUrl && (
+            <a
+              href={finalRenderOutputUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="glass-btn-base glass-btn-tone-success flex items-center gap-2 px-4 py-2 text-sm font-medium"
+              title="Open final video"
+            >
+              <AppIcon name="externalLink" className="w-4 h-4" />
+              <span>Open Final</span>
+            </a>
+          )}
+
           {onEnterEditor && (
             <button
               onClick={onEnterEditor}
@@ -109,6 +166,7 @@ export default function VideoToolbar({
               <span>{t('toolbar.enterEdit')}</span>
             </button>
           )}
+
           <button
             onClick={onBack}
             className="glass-btn-base glass-btn-secondary flex items-center gap-2 px-4 py-2 text-sm font-medium border border-[var(--glass-stroke-base)] hover:text-[var(--glass-tone-info-fg)]"
@@ -118,6 +176,13 @@ export default function VideoToolbar({
           </button>
         </div>
       </div>
+
+      {(onRenderFinal || finalRenderTaskId) && (
+        <div className="mt-3 text-xs text-[var(--glass-text-tertiary)] flex items-center gap-3">
+          <span>{getFinalStatusLabel(finalRenderStatus)}</span>
+          {finalRenderTaskId && <span>Task: {finalRenderTaskId}</span>}
+        </div>
+      )}
     </div>
   )
 }

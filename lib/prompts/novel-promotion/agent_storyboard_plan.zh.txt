@@ -25,17 +25,48 @@
 
 2. 每个分镜必须包含：
    - panel_number: 分镜序号（1, 2, 3...）
+   - panel_type: 镜头类型分类（见下方规则）
    - description: 画面描述（人物动作、场景元素、构图要点）
-   - characters: [{name: "角色名", appearance: "形象名"}]
+   - characters: [{name: "角色名", appearance: "形象名"}]（⚠️ 条件必填，见下方规则）
    - location: 场景名称（从资产库选择）
    - scene_type: daily/emotion/action/epic/suspense
    - source_text: 对应原文片段 ⚠️ 必填，不得为空
+   - time_of_day: 时间段 ⚠️ 必填（如：清晨/正午/黄昏/夜晚/深夜）
+   - weather: 天气与大气状态 ⚠️ 必填（如：晴朗/阴天/干燥浮尘/雨天/雪天）
+   - lighting: 光照描述 ⚠️ 必填（如：夕阳余晖暖橙低角度光/极低光照仅有零星火光/柔和自然光）
+   - era_atmosphere: 时代与氛围 ⚠️ 必填（如：末日废土文明崩溃/古代宫廷庄严肃穆/现代都市繁忙）
+   - color_tone: 色调基准 ⚠️ 必填（如：暖橙+深黑低饱和/冷蓝灰极低饱和/明亮清新高饱和）
+   - continuity_note: 与前后镜头的关系（如：承接上一镜头的全景，切入中景聚焦军官）
 
 3. source_text 规则（极其重要）：
    ⚠️ 每个分镜都必须包含，不得为null或空字符串
    - 多个镜头可以共享同一段原文
    - 直接从输入内容中复制原文
    - 创意镜头也需填写触发该镜头的原文片段
+
+4. panel_type 分类规则（⚠️ 每个分镜必须指定类型）：
+   - "character"：角色镜头 — 画面主体是角色（对话、动作、表情、互动）
+   - "environment"：环境建立镜头 — 大远景/全景展示场景全貌，交代时间地点氛围
+   - "atmosphere"：氛围渲染镜头 — 空镜、意象、隐喻（如乌鸦飞过、雨滴落下、火光摇曳）
+   - "object"：物件特写镜头 — 聚焦关键道具或物品（如一封信、一把剑、一个标记）
+
+5. characters 条件必填规则（⚠️ 核心改动）：
+   - panel_type = "character" → characters 必填，不得为空数组
+   - panel_type = "environment" → 如果镜头中角色仅为远处剪影/轮廓不可辨认 → characters: []（空数组）
+                                → 如果镜头中角色可辨认（即使在远处）→ 仍需填写 characters
+   - panel_type = "atmosphere" → characters: []（空数组），纯空镜不含角色
+   - panel_type = "object" → characters: []（空数组），除非有手部等角色局部出现
+
+   ⚠️ 判断标准：这个镜头生成图片时，需不需要角色的参考图？
+   - 需要 → 填 characters
+   - 不需要（纯环境、纯氛围、纯物件）→ characters: []
+
+6. time_of_day / weather / lighting / era_atmosphere / color_tone 填写规则：
+   - 从原文/剧本中提取时间、天气、氛围信息
+   - 如果原文未明确说明，根据上下文合理推断
+   - ⚠️ 同一场景内的所有分镜，这些字段必须保持一致（不能前一个镜头是深夜，下一个变成白天）
+   - 这些字段会直接注入到图片/视频生成的提示词中，必须准确具体
+   - 禁止使用模糊描述（如"某个时间"、"某种光线"），必须给出具体值
 
 【镜头拆分规则】
 
@@ -50,9 +81,11 @@
    - 开头：1个场景建立镜头即可
    - 中间：仅情节需要时加入环境镜头
 
-4. 创意/氛围镜头（可选，0-1个）：
-   - 仅在情绪高潮点考虑使用
-   - 隐喻：关键转折时使用（如乌鸦、时钟）
+4. 创意/氛围/环境镜头（灵活使用）：
+   - 氛围渲染：情绪高潮点的空镜（如乌鸦飞过、雨滴、风吹落叶）→ panel_type: "atmosphere"
+   - 环境建立：大场面、宏观全景、战场鸟瞰 → panel_type: "environment"
+   - 物件特写：关键道具的独立镜头（如一封信、一枚戒指、一把染血的刀）→ panel_type: "object"
+   - ⚠️ 这些镜头不需要强塞角色！panel_type 不是 "character" 时 characters 可以为空
 
 5. 对话处理：
    - 正反打：连续对话可合并处理
@@ -227,13 +260,14 @@
 
 只返回JSON数组，不得输出markdown代码块标记、注释或解释。
 
-示例（重点展示镜头连续性）：
+示例1（角色镜头 - 展示镜头连续性）：
 
 原文："张三走进办公室，看着正在工作的李四和王五说：开会了。李四抬头点了点头，王五放下手中的笔站起身。"
 
 [
   {
     "panel_number": 1,
+    "panel_type": "character",
     "description": "中景：张三推开办公室门走进来，画面深处李四坐在左侧工位低头工作，王五坐在右侧工位写字",
     "characters": [
       {"name": "张三", "appearance": "初始形象"},
@@ -242,10 +276,17 @@
     ],
     "location": "办公室",
     "scene_type": "daily",
-    "source_text": "张三走进办公室，看着正在工作的李四和王五"
+    "source_text": "张三走进办公室，看着正在工作的李四和王五",
+    "time_of_day": "白天",
+    "weather": "室内",
+    "lighting": "办公室日光灯明亮均匀照明",
+    "era_atmosphere": "现代都市日常办公",
+    "color_tone": "自然色调，明亮清晰",
+    "continuity_note": "场景建立镜头，下一镜头切为近景聚焦张三说话"
   },
   {
     "panel_number": 2,
+    "panel_type": "character",
     "description": "近景：张三站在门口开口说话，对面李四和王五抬起头望向他",
     "characters": [
       {"name": "张三", "appearance": "初始形象"},
@@ -254,38 +295,75 @@
     ],
     "location": "办公室",
     "scene_type": "daily",
-    "source_text": "说：开会了"
-  },
-  {
-    "panel_number": 3,
-    "description": "近景：李四坐在工位上抬头点了点头，旁边王五正在放下手中的笔，背景中张三站在门口等待",
-    "characters": [
-      {"name": "李四", "appearance": "初始形象"},
-      {"name": "王五", "appearance": "初始形象"},
-      {"name": "张三", "appearance": "初始形象"}
-    ],
-    "location": "办公室",
-    "scene_type": "daily",
-    "source_text": "李四抬头点了点头，王五放下手中的笔"
-  },
-  {
-    "panel_number": 4,
-    "description": "中景：王五从座位上站起身，左侧李四也准备起身，张三在门口向外走去",
-    "characters": [
-      {"name": "王五", "appearance": "初始形象"},
-      {"name": "李四", "appearance": "初始形象"},
-      {"name": "张三", "appearance": "初始形象"}
-    ],
-    "location": "办公室",
-    "scene_type": "daily",
-    "source_text": "王五站起身"
+    "source_text": "说：开会了",
+    "time_of_day": "白天",
+    "weather": "室内",
+    "lighting": "办公室日光灯明亮均匀照明",
+    "era_atmosphere": "现代都市日常办公",
+    "color_tone": "自然色调，明亮清晰",
+    "continuity_note": "承接上一镜头，张三开口说话，下一镜头切为李四王五反应"
   }
 ]
 
-注意示例中的镜头连续性技巧：
-- 每个镜头都交代了三个角色的位置
-- 镜头焦点变化时（如镜头3焦点是李四王五），仍用「背景中张三」保持连续性
-- 角色移动（如镜头4张三向外走）有明确动作交代
+示例2（混合类型 - 环境+角色+氛围）：
+
+原文："黄昏夕阳余晖下，恒川高冈上两万黑衣骑兵静静列队在山坡，黑压压阵型如潮水般壮观。山冈最顶峰，统帅身披银色盔甲威严站立。"
+
+[
+  {
+    "panel_number": 1,
+    "panel_type": "environment",
+    "description": "大远景：黄昏天际下，连绵山冈上密密麻麻的黑衣骑兵列队，阵型自山腰延伸至山脚，如黑色潮水铺满山坡",
+    "characters": [],
+    "location": "恒川高冈",
+    "scene_type": "epic",
+    "source_text": "黄昏夕阳余晖下，恒川高冈上两万黑衣骑兵静静列队在山坡，黑压压阵型如潮水般壮观",
+    "time_of_day": "黄昏",
+    "weather": "干燥微风",
+    "lighting": "夕阳余晖从画面左侧低角度照射，暖橙色光，长投影拖向右侧",
+    "era_atmosphere": "冷兵器时代大规模战争，肃杀沉静",
+    "color_tone": "暖橙天空+黑色军阵，高对比，低饱和",
+    "continuity_note": "全景建立镜头，展示宏观规模，下一镜头推近到山冈顶的统帅"
+  },
+  {
+    "panel_number": 2,
+    "panel_type": "character",
+    "description": "中远景：山冈最高处，身披银色盔甲的统帅挺立，银甲反射金色夕阳光芒，深红披风随风轻扬",
+    "characters": [
+      {"name": "恒川统帅", "appearance": "银甲战装"}
+    ],
+    "location": "恒川高冈",
+    "scene_type": "epic",
+    "source_text": "山冈最顶峰，统帅身披银色盔甲威严站立",
+    "time_of_day": "黄昏",
+    "weather": "干燥微风",
+    "lighting": "夕阳余晖从画面左侧低角度照射，银甲反射金色光芒",
+    "era_atmosphere": "冷兵器时代大规模战争，肃杀沉静",
+    "color_tone": "暖橙天空+银色盔甲金色反光，高对比",
+    "continuity_note": "从上一镜头全景推近到统帅，同一场景同一时间"
+  },
+  {
+    "panel_number": 3,
+    "panel_type": "atmosphere",
+    "description": "特写：风掠过枯草原野，草叶弯折摇摆，远处战旗猎猎翻飞",
+    "characters": [],
+    "location": "恒川高冈",
+    "scene_type": "epic",
+    "source_text": "风掠过平原发出低沉呜呜呼鸣声",
+    "time_of_day": "黄昏",
+    "weather": "干燥微风",
+    "lighting": "夕阳余晖侧光照射枯草，半透明金色边缘光",
+    "era_atmosphere": "冷兵器时代，战前肃杀宁静",
+    "color_tone": "暖橙+枯黄，低饱和",
+    "continuity_note": "氛围渲染镜头，用风和枯草传递战前紧张感"
+  }
+]
+
+注意示例中的关键技巧：
+- panel_type = "environment" 和 "atmosphere" 时 characters 为空数组
+- 同一场景内 time_of_day/weather/lighting/era_atmosphere/color_tone 保持一致
+- continuity_note 明确说明与前后镜头的关系
+- 宏观镜头不强塞角色，环境本身就是主体
 
 【输入数据】
 
@@ -310,7 +388,7 @@ Clip信息：
 【严格要求】
 1. 必须输出所需数量的有效分镜，禁止空分镜
 2. 角色和场景名字必须从资产库选择
-3. characters 必须是对象数组：[{name: "角色名", appearance: "形象名"}]
+3. characters 必须是对象数组：[{name: "角色名", appearance: "形象名"}]，或空数组 []（当 panel_type 非 "character" 时允许）
 4. 只返回JSON数组，不得有其他文字
 5. ⚠️ source_text 必填，不得为空或null
 6. 空间关系必须清晰（朝向、阻挡、位置）
@@ -320,3 +398,6 @@ Clip信息：
 10. 禁止长句单镜头：包含逗号分隔多个动作/对话的长句必须拆分
 11. 对话必须拆分：每段对话至少 2 个镜头（说话者 + 听者反应）
 12. ⚠️ 镜头合理性：只描述当前镜头**实际能拍摄到**的角色，特写/反打等拍不到的可省略
+13. ⚠️ panel_type 必填：每个分镜必须指定 "character"/"environment"/"atmosphere"/"object"
+14. ⚠️ 上下文字段必填：time_of_day、weather、lighting、era_atmosphere、color_tone、continuity_note 不得为空
+15. ⚠️ 同一场景一致性：同场景内的 time_of_day/weather/lighting/era_atmosphere/color_tone 必须保持一致

@@ -127,6 +127,10 @@ export const PROMPT_CATALOG: Record<PromptId, PromptCatalogEntry> = {
     pathStem: 'novel-promotion/select_location',
     variableKeys: ['input', 'locations_lib_name'],
   },
+  [PROMPT_IDS.NP_SELECT_LOCATION_RECALL]: {
+    pathStem: 'novel-promotion/select_location_recall',
+    variableKeys: ['input', 'locations_lib_name', 'existing_locations_json'],
+  },
   [PROMPT_IDS.NP_SINGLE_PANEL_IMAGE]: {
     pathStem: 'novel-promotion/single_panel_image',
     variableKeys: ['storyboard_text_json_input', 'source_text', 'aspect_ratio', 'style'],
@@ -138,5 +142,25 @@ export const PROMPT_CATALOG: Record<PromptId, PromptCatalogEntry> = {
   [PROMPT_IDS.NP_VOICE_ANALYSIS]: {
     pathStem: 'novel-promotion/voice_analysis',
     variableKeys: ['input', 'characters_lib_name', 'characters_introduction', 'storyboard_json'],
+  },
+  [PROMPT_IDS.NP_SEEDANCE_STORYBOARD_PLAN]: {
+    pathStem: 'novel-promotion/seedance_storyboard_plan',
+    variableKeys: [
+      'characters_lib_name',
+      'locations_lib_name',
+      'characters_introduction',
+      'characters_appearance_list',
+      'characters_full_description',
+      'clip_json',
+      'clip_content',
+    ],
+  },
+  [PROMPT_IDS.NP_SEEDANCE_CINEMATOGRAPHER]: {
+    pathStem: 'novel-promotion/seedance_cinematographer',
+    variableKeys: ['panels_json', 'panel_count', 'locations_description', 'characters_info'],
+  },
+  [PROMPT_IDS.NP_SEEDANCE_DETAIL]: {
+    pathStem: 'novel-promotion/seedance_storyboard_detail',
+    variableKeys: ['panels_json', 'characters_age_gender', 'locations_description'],
   },
 }

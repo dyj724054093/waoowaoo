@@ -85,11 +85,7 @@ export default function ImageEditModal({
   }
 
   const handleSubmit = () => {
-    if (!editPrompt.trim()) {
-      alert(t('prompts.enterInstruction'))
-      return
-    }
-    onSubmit(editPrompt, editImages, selectedAssets)
+    onSubmit(editPrompt.trim(), editImages, selectedAssets)
   }
 
   return (
@@ -105,7 +101,7 @@ export default function ImageEditModal({
 
         <div className="p-6 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-[var(--glass-text-secondary)] mb-2">{t('prompts.aiInstruction')}</label>
+            <label className="block text-sm font-medium text-[var(--glass-text-secondary)] mb-2">{t('imageEdit.editInstruction')}</label>
             <textarea
               value={editPrompt}
               onChange={(event) => setEditPrompt(event.target.value)}
@@ -170,8 +166,7 @@ export default function ImageEditModal({
           </button>
           <button
             onClick={handleSubmit}
-            disabled={!editPrompt.trim()}
-            className="px-4 py-2 bg-[var(--glass-accent-from)] text-white rounded-lg hover:bg-[var(--glass-accent-to)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="px-4 py-2 bg-[var(--glass-accent-from)] text-white rounded-lg hover:bg-[var(--glass-accent-to)] transition-colors"
           >
             {t('imageEdit.start')}
           </button>

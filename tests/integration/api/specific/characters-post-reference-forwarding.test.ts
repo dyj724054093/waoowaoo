@@ -70,11 +70,12 @@ describe('api specific - characters POST forwarding to reference task', () => {
       },
     })
 
-    const res = await mod.POST(req)
+    const res = await mod.POST(req, {} as never)
     expect(res.status).toBe(200)
 
-    const calledUrl = fetchMock.mock.calls[0]?.[0]
-    const calledInit = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined
+    const fetchCall = fetchMock.mock.calls[0] as unknown[] | undefined
+    const calledUrl = fetchCall?.[0]
+    const calledInit = fetchCall?.[1] as RequestInit | undefined
     expect(String(calledUrl)).toContain('/api/asset-hub/reference-to-character')
     expect((calledInit?.headers as Record<string, string>)['Accept-Language']).toBe('zh-CN,zh;q=0.9')
 
@@ -99,7 +100,7 @@ describe('api specific - characters POST forwarding to reference task', () => {
 
   it('returns unauthorized when auth fails', async () => {
     authMock.requireUserAuth.mockResolvedValueOnce(
-      NextResponse.json({ error: { code: 'UNAUTHORIZED' } }, { status: 401 }),
+      NextResponse.json({ error: { code: 'UNAUTHORIZED' } }, { status: 401 }) as never,
     )
     const mod = await import('@/app/api/asset-hub/characters/route')
     const req = buildMockRequest({
@@ -108,7 +109,7 @@ describe('api specific - characters POST forwarding to reference task', () => {
       body: { name: 'Hero' },
     })
 
-    const res = await mod.POST(req)
+    const res = await mod.POST(req, {} as never)
     expect(res.status).toBe(401)
   })
 })

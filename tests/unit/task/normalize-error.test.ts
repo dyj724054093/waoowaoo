@@ -20,3 +20,32 @@ describe('normalizeAnyError network termination mapping', () => {
     expect(normalized.retryable).toBe(true)
   })
 })
+
+describe('normalizeAnyError upstream 403 classification', () => {
+  it('maps cloudflare challenge html to EXTERNAL_ERROR', () => {
+    const normalized = normalizeAnyError(
+      new Error('500 upload failed: 403 <!DOCTYPE html><html><head><title>Just a moment...</title>')
+    )
+    expect(normalized.code).toBe('EXTERNAL_ERROR')
+    expect(normalized.retryable).toBe(true)
+  })
+
+  it('maps provider blocked message to EXTERNAL_ERROR', () => {
+    const normalized = normalizeAnyError({
+      status: 403,
+      message: '403 Your request was blocked.',
+      provider: 'openai-compatible:test',
+    })
+    expect(normalized.code).toBe('EXTERNAL_ERROR')
+    expect(normalized.retryable).toBe(true)
+  })
+
+  it('keeps normal permission denied as FORBIDDEN', () => {
+    const normalized = normalizeAnyError({
+      status: 403,
+      message: 'permission denied',
+    })
+    expect(normalized.code).toBe('FORBIDDEN')
+    expect(normalized.retryable).toBe(false)
+  })
+})

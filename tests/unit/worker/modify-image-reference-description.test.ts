@@ -153,7 +153,7 @@ describe('modify image with references writes real description', () => {
       }),
     )
 
-    const updateArg = prismaMock.characterAppearance.update.mock.calls.at(-1)?.[0]
+    const updateArg = (prismaMock.characterAppearance.update.mock.calls.at(-1) as unknown[] | undefined)?.[0]
     const updateData = getUpdateData(updateArg)
     expect(updateData.description).toBe('AI_EXTRACTED_DESCRIPTION')
     expect(updateData.previousDescription).toBe('old description')
@@ -174,7 +174,7 @@ describe('modify image with references writes real description', () => {
 
     await handleAssetHubModifyTask(job)
 
-    const updateArg = prismaMock.globalCharacterAppearance.update.mock.calls.at(-1)?.[0]
+    const updateArg = (prismaMock.globalCharacterAppearance.update.mock.calls.at(-1) as unknown[] | undefined)?.[0]
     const updateData = getUpdateData(updateArg)
     expect(updateData.description).toBe('AI_EXTRACTED_DESCRIPTION')
     expect(updateData.imageUrl).toBe('cos/new-global-image.png')

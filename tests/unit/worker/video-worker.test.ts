@@ -6,11 +6,19 @@ type WorkerProcessor = (job: Job<TaskJobData>) => Promise<unknown>
 
 type PanelRow = {
   id: string
+  storyboardId: string
+  panelIndex: number
   videoUrl: string | null
   imageUrl: string | null
   videoPrompt: string | null
   description: string | null
   firstLastFramePrompt: string | null
+  shotType: string | null
+  cameraMove: string | null
+  location: string | null
+  sceneType: string | null
+  characters: string | null
+  srtSegment: string | null
 }
 
 const workerState = vi.hoisted(() => ({
@@ -35,7 +43,14 @@ const prismaMock = vi.hoisted(() => ({
   novelPromotionPanel: {
     findUnique: vi.fn(),
     findFirst: vi.fn(),
+    findMany: vi.fn(),
     update: vi.fn(async () => undefined),
+  },
+  novelPromotionProject: {
+    findUnique: vi.fn(),
+  },
+  novelPromotionStoryboard: {
+    findUnique: vi.fn(),
   },
   novelPromotionVoiceLine: {
     findUnique: vi.fn(),
@@ -87,11 +102,19 @@ vi.mock('@/lib/api-config', () => ({
 function buildPanel(overrides?: Partial<PanelRow>): PanelRow {
   return {
     id: 'panel-1',
+    storyboardId: 'storyboard-1',
+    panelIndex: 0,
     videoUrl: 'cos/base-video.mp4',
     imageUrl: 'cos/panel-image.png',
     videoPrompt: 'panel prompt',
     description: 'panel description',
     firstLastFramePrompt: null,
+    shotType: 'medium shot',
+    cameraMove: 'static',
+    location: 'subway platform',
+    sceneType: 'interior',
+    characters: '[]',
+    srtSegment: 'same scene continuity baseline text',
     ...(overrides || {}),
   }
 }
@@ -101,12 +124,13 @@ function buildJob(params: {
   payload?: Record<string, unknown>
   targetType?: string
   targetId?: string
+  locale?: TaskJobData['locale']
 }): Job<TaskJobData> {
   return {
     data: {
       taskId: 'task-1',
       type: params.type,
-      locale: 'zh',
+      locale: params.locale ?? 'zh',
       projectId: 'project-1',
       episodeId: 'episode-1',
       targetType: params.targetType ?? 'NovelPromotionPanel',
@@ -124,6 +148,19 @@ describe('worker video processor behavior', () => {
 
     prismaMock.novelPromotionPanel.findUnique.mockResolvedValue(buildPanel())
     prismaMock.novelPromotionPanel.findFirst.mockResolvedValue(buildPanel())
+    prismaMock.novelPromotionPanel.findMany.mockResolvedValue([
+      buildPanel({ panelIndex: 0 }),
+      buildPanel({ panelIndex: 1, description: 'character turns and looks far away', shotType: 'close-up' }),
+    ])
+    prismaMock.novelPromotionStoryboard.findUnique.mockResolvedValue({
+      clip: {
+        summary: 'main character infiltrates station and observes patrol',
+        content: 'main character infiltrates station and observes patrol',
+      },
+    })
+    prismaMock.novelPromotionProject.findUnique.mockResolvedValue({
+      characters: [],
+    })
     prismaMock.novelPromotionVoiceLine.findUnique.mockResolvedValue({
       id: 'line-1',
       audioUrl: 'cos/line-1.mp3',
@@ -133,7 +170,7 @@ describe('worker video processor behavior', () => {
     mod.createVideoWorker()
   })
 
-  it('VIDEO_PANEL: 缺少 payload.videoModel 时显式失败', async () => {
+  it('VIDEO_PANEL: throws explicit error when payload.videoModel is missing', async () => {
     const processor = workerState.processor
     expect(processor).toBeTruthy()
 
@@ -145,7 +182,7 @@ describe('worker video processor behavior', () => {
     await expect(processor!(job)).rejects.toThrow('VIDEO_MODEL_REQUIRED: payload.videoModel is required')
   })
 
-  it('VIDEO_PANEL: 透传异步轮询返回的下载头到 COS 上传', async () => {
+  it('VIDEO_PANEL: forwards async download headers to COS upload', async () => {
     const processor = workerState.processor
     expect(processor).toBeTruthy()
 
@@ -154,7 +191,7 @@ describe('worker video processor behavior', () => {
       downloadHeaders: {
         Authorization: 'Bearer oa-key',
       },
-    })
+    } as never)
 
     const job = buildJob({
       type: TASK_TYPE.VIDEO_PANEL,
@@ -179,7 +216,116 @@ describe('worker video processor behavior', () => {
     )
   })
 
-  it('LIP_SYNC: 缺少 panel 时显式失败', async () => {
+  it('VIDEO_PANEL: appends continuity context into prompt', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+
+    const job = buildJob({
+      type: TASK_TYPE.VIDEO_PANEL,
+      payload: {
+        videoModel: 'openai-compatible:oa-1::sora-2',
+      },
+    })
+
+    await processor!(job)
+    expect(utilsMock.resolveVideoSourceFromGeneration).toHaveBeenCalledTimes(1)
+
+    const call = utilsMock.resolveVideoSourceFromGeneration.mock.calls[0] as unknown[] | undefined
+    const options = (call?.[1] as Record<string, unknown> | undefined)?.options as { prompt?: string } | undefined
+    expect(options?.prompt).toContain('panel prompt')
+    expect(options?.prompt).toContain('same scene continuity baseline text')
+    expect(options?.prompt).not.toBe('panel prompt')
+  })
+
+  it('VIDEO_PANEL: uses matching appearance from panel character reference', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+
+    prismaMock.novelPromotionPanel.findUnique.mockResolvedValueOnce(
+      buildPanel({
+        characters: JSON.stringify([{ name: 'Hero', appearance: 'battle' }]),
+      }),
+    )
+    prismaMock.novelPromotionProject.findUnique.mockResolvedValueOnce({
+      characters: [
+        {
+          name: 'Hero',
+          aliases: '[]',
+          appearances: [
+            {
+              changeReason: 'default',
+              description: 'clean face and neat armor',
+              descriptions: null,
+              selectedIndex: 0,
+            },
+            {
+              changeReason: 'battle',
+              description: 'scarred face and torn armor',
+              descriptions: null,
+              selectedIndex: 0,
+            },
+          ],
+        },
+      ],
+    })
+
+    const job = buildJob({
+      type: TASK_TYPE.VIDEO_PANEL,
+      payload: {
+        videoModel: 'openai-compatible:oa-1::sora-2',
+      },
+    })
+
+    await processor!(job)
+    expect(utilsMock.resolveVideoSourceFromGeneration).toHaveBeenCalledTimes(1)
+
+    const call = utilsMock.resolveVideoSourceFromGeneration.mock.calls[0] as unknown[] | undefined
+    const options = (call?.[1] as Record<string, unknown> | undefined)?.options as { prompt?: string } | undefined
+    expect(options?.prompt).toContain('scarred face and torn armor')
+  })
+
+  it('VIDEO_PANEL: supports aliases field when resolving character visuals', async () => {
+    const processor = workerState.processor
+    expect(processor).toBeTruthy()
+
+    prismaMock.novelPromotionPanel.findUnique.mockResolvedValueOnce(
+      buildPanel({
+        characters: JSON.stringify([{ name: 'Old Fox' }]),
+      }),
+    )
+    prismaMock.novelPromotionProject.findUnique.mockResolvedValueOnce({
+      characters: [
+        {
+          name: 'Commander Liang',
+          aliases: JSON.stringify(['Old Fox', 'Old Master']),
+          appearances: [
+            {
+              changeReason: 'default',
+              description: 'grey beard and black robe',
+              descriptions: null,
+              selectedIndex: 0,
+            },
+          ],
+        },
+      ],
+    })
+
+    const job = buildJob({
+      type: TASK_TYPE.VIDEO_PANEL,
+      payload: {
+        videoModel: 'openai-compatible:oa-1::sora-2',
+      },
+    })
+
+    await processor!(job)
+    expect(utilsMock.resolveVideoSourceFromGeneration).toHaveBeenCalledTimes(1)
+
+    const call = utilsMock.resolveVideoSourceFromGeneration.mock.calls[0] as unknown[] | undefined
+    const options = (call?.[1] as Record<string, unknown> | undefined)?.options as { prompt?: string } | undefined
+    expect(options?.prompt).toContain('grey beard and black robe')
+  })
+
+  it('LIP_SYNC: throws explicit error when panel is missing', async () => {
     const processor = workerState.processor
     expect(processor).toBeTruthy()
 
@@ -193,7 +339,7 @@ describe('worker video processor behavior', () => {
     await expect(processor!(job)).rejects.toThrow('Lip-sync panel not found')
   })
 
-  it('LIP_SYNC: 正常路径写回 lipSyncVideoUrl 并清理 lipSyncTaskId', async () => {
+  it('LIP_SYNC: writes lipSyncVideoUrl and clears lipSyncTaskId', async () => {
     const processor = workerState.processor
     expect(processor).toBeTruthy()
 
@@ -230,7 +376,7 @@ describe('worker video processor behavior', () => {
     })
   })
 
-  it('未知任务类型: 显式报错', async () => {
+  it('unknown task type: throws explicit error', async () => {
     const processor = workerState.processor
     expect(processor).toBeTruthy()
 

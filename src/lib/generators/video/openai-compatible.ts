@@ -17,6 +17,19 @@ type OpenAIVideoAspectRatio =
   | '1:1'
   | 'auto'
 
+type GrokVideoAspectRatio = '16:9' | '9:16' | '3:2' | '2:3' | '1:1'
+type GrokVideoLength = 6 | 10 | 15
+type GrokVideoResolution = '480p' | '720p'
+
+const GROK_IMAGINE_VIDEO_MODEL = 'grok-imagine-1.0-video'
+const BROWSER_LIKE_USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+  + '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
 function parseDataUrl(value: string): { mimeType: string; base64: string } | null {
   const marker = ';base64,'
   const markerIndex = value.indexOf(marker)
@@ -114,6 +127,172 @@ function resolveFinalSize(options: Record<string, unknown>): OpenAIVideoSize | u
   return normalizedSize || normalizedResolution
 }
 
+function normalizeModelForProvider(model: string): string {
+  const trimmed = model.trim()
+  const [providerModel = trimmed] = trimmed.split('::').slice(-1)
+  return providerModel || trimmed
+}
+
+function shouldUseGrokChatVideoProtocol(model: string): boolean {
+  return normalizeModelForProvider(model) === GROK_IMAGINE_VIDEO_MODEL
+}
+
+function resolveGrokVideoAspectRatio(value: unknown): GrokVideoAspectRatio {
+  if (value === undefined || value === null || value === '') return '3:2'
+  if (typeof value !== 'string') {
+    throw new Error(`GROK_VIDEO_ASPECT_RATIO_UNSUPPORTED: ${String(value)}`)
+  }
+  const trimmed = value.trim()
+  const mapped: Record<string, GrokVideoAspectRatio> = {
+    '16:9': '16:9',
+    '9:16': '9:16',
+    '3:2': '3:2',
+    '2:3': '2:3',
+    '1:1': '1:1',
+    '1280x720': '16:9',
+    '720x1280': '9:16',
+    '1792x1024': '3:2',
+    '1024x1792': '2:3',
+    '1024x1024': '1:1',
+  }
+  const next = mapped[trimmed]
+  if (!next) {
+    throw new Error(`GROK_VIDEO_ASPECT_RATIO_UNSUPPORTED: ${trimmed}`)
+  }
+  return next
+}
+
+function resolveGrokVideoLength(value: unknown): GrokVideoLength {
+  if (value === undefined || value === null || value === '') return 6
+
+  const normalized = typeof value === 'string' ? Number.parseInt(value, 10) : value
+  if (normalized === 6 || normalized === 10 || normalized === 15) {
+    return normalized
+  }
+  throw new Error(`GROK_VIDEO_LENGTH_UNSUPPORTED: ${String(value)}`)
+}
+
+function resolveGrokVideoResolution(value: unknown): GrokVideoResolution {
+  if (value === undefined || value === null || value === '') return '480p'
+  if (value === 'SD' || value === 'sd') return '480p'
+  if (value === 'HD' || value === 'hd') return '720p'
+  if (value === '480p' || value === '720p') return value
+  throw new Error(`GROK_VIDEO_RESOLUTION_UNSUPPORTED: ${String(value)}`)
+}
+
+function toLegacyGrokResolution(value: GrokVideoResolution): 'SD' | 'HD' {
+  return value === '720p' ? 'HD' : 'SD'
+}
+
+function normalizeMessageContentToText(content: unknown): string {
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return ''
+
+  const parts: string[] = []
+  for (const item of content) {
+    if (!isRecord(item)) continue
+    const text = typeof item.text === 'string' ? item.text : ''
+    if (text) parts.push(text)
+
+    const url = isRecord(item.image_url) && typeof item.image_url.url === 'string'
+      ? item.image_url.url
+      : ''
+    if (url) parts.push(url)
+  }
+
+  return parts.join('\n')
+}
+
+function extractVideoUrlFromContent(content: string): string | null {
+  const videoTag = content.match(/<video[^>]*\ssrc=[\"']([^\"']+)[\"']/i)
+  if (videoTag?.[1]) return videoTag[1]
+
+  const mediaUrl = content.match(/https?:\/\/[^\s\"'<>]+\.(mp4|webm|mov)(\?[^\s\"'<>]*)?/i)
+  if (mediaUrl?.[0]) return mediaUrl[0]
+
+  const anyUrl = content.match(/https?:\/\/[^\s\"'<>]+/i)
+  if (anyUrl?.[0]) return anyUrl[0]
+
+  return null
+}
+
+async function createVideoViaGrokChatCompletions(params: {
+  baseUrl: string
+  apiKey: string
+  model: string
+  prompt: string
+  imageUrl?: string
+  aspectRatio: GrokVideoAspectRatio
+  videoLength: GrokVideoLength
+  resolutionName: GrokVideoResolution
+  preset: 'custom' | 'fun' | 'normal' | 'spicy'
+}): Promise<{ videoUrl: string }> {
+  const endpoint = `${params.baseUrl.replace(/\/+$/, '')}/chat/completions`
+  const normalizedImageUrl = params.imageUrl
+    ? (params.imageUrl.startsWith('data:') ? params.imageUrl : await imageUrlToBase64(params.imageUrl))
+    : undefined
+  const content = normalizedImageUrl
+    ? [
+      { type: 'text', text: params.prompt },
+      { type: 'image_url', image_url: { url: normalizedImageUrl } },
+    ]
+    : params.prompt
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${params.apiKey}`,
+      'User-Agent': BROWSER_LIKE_USER_AGENT,
+    },
+    body: JSON.stringify({
+      model: params.model,
+      messages: [{ role: 'user', content }],
+      stream: false,
+      video_config: {
+        aspect_ratio: params.aspectRatio,
+        video_length: params.videoLength,
+        resolution: toLegacyGrokResolution(params.resolutionName),
+        resolution_name: params.resolutionName,
+        preset: params.preset,
+      },
+    }),
+  })
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '')
+    throw new Error(`OPENAI_VIDEO_CHAT_COMPLETIONS_FAILED: ${response.status} ${text.slice(0, 300)}`)
+  }
+
+  const payload = await response.json().catch(() => null) as unknown
+  if (!isRecord(payload)) {
+    throw new Error('OPENAI_VIDEO_CHAT_COMPLETIONS_INVALID_RESPONSE: response is not an object')
+  }
+
+  let rawContent = ''
+  const choices = payload.choices
+  if (Array.isArray(choices) && choices.length > 0) {
+    const first = choices[0]
+    if (isRecord(first)) {
+      const message = first.message
+      if (isRecord(message)) {
+        rawContent = normalizeMessageContentToText(message.content)
+      }
+    }
+  }
+
+  if (!rawContent && typeof payload.video_url === 'string') {
+    rawContent = payload.video_url
+  }
+
+  const videoUrl = extractVideoUrlFromContent(rawContent)
+  if (!videoUrl) {
+    throw new Error(`OPENAI_VIDEO_CHAT_COMPLETIONS_INVALID_RESPONSE: ${rawContent.slice(0, 300)}`)
+  }
+
+  return { videoUrl }
+}
+
 export function encodeProviderId(providerId: string): string {
   return Buffer.from(providerId, 'utf8').toString('base64url')
 }
@@ -129,8 +308,7 @@ async function toUploadFileFromImageUrl(imageUrl: string): Promise<File> {
 }
 
 /**
- * Fallback: POST /video/create (非 OpenAI 标准，部分网关使用此格式)
- * 返回 { id, status } 格式
+ * Fallback: POST /video/create (non-standard OpenAI-compatible endpoint)
  */
 async function createVideoViaFetchFallback(
   baseUrl: string,
@@ -161,18 +339,14 @@ async function createVideoViaFetchFallback(
 }
 
 /**
- * 判断是否为端点不支持的错误（404/405/500 无 body 等）
+ * Detect endpoint unsupported errors (404/405/500 no body)
  */
 function isEndpointUnsupportedError(error: unknown): boolean {
   if (!(error instanceof Error)) return false
   const message = error.message || ''
-  // OpenAI SDK wraps HTTP errors with status codes
   if (/\b(404|405)\b/.test(message)) return true
-  // 500 with no body typically means the gateway doesn't support this endpoint
   if (/500\s*status\s*code\s*\(no\s*body\)/i.test(message)) return true
-  // Some gateways return error JSON with specific codes
   if (/get_channel_failed/i.test(message)) return true
-  // Check for status property on error object
   const statusCode = (error as { status?: number }).status
   if (statusCode === 404 || statusCode === 405) return true
   return false
@@ -194,7 +368,6 @@ export class OpenAICompatibleVideoGenerator extends BaseVideoGenerator {
       throw new Error(`PROVIDER_BASE_URL_MISSING: ${config.id}`)
     }
 
-    // Filter out unknown options silently — custom models may pass extra params
     const allowedOptionKeys = new Set([
       'provider',
       'modelId',
@@ -206,6 +379,7 @@ export class OpenAICompatibleVideoGenerator extends BaseVideoGenerator {
       'size',
       'generateAudio',
       'generationMode',
+      'preset',
     ])
     for (const [key, value] of Object.entries(options)) {
       if (value === undefined) continue
@@ -215,13 +389,35 @@ export class OpenAICompatibleVideoGenerator extends BaseVideoGenerator {
     }
 
     const model = normalizeModel(options.modelId)
-    const seconds = normalizeDuration(options.duration)
-    const size = resolveFinalSize(options)
     const trimmedPrompt = prompt.trim()
     if (!trimmedPrompt) {
       throw new Error('OPENAI_VIDEO_PROMPT_REQUIRED')
     }
 
+    // Some Grok-compatible gateways expose video generation through
+    // chat/completions + video_config, not OpenAI /videos endpoints.
+    if (shouldUseGrokChatVideoProtocol(model)) {
+      const grokResult = await createVideoViaGrokChatCompletions({
+        baseUrl: config.baseUrl,
+        apiKey: config.apiKey,
+        model: normalizeModelForProvider(model),
+        prompt: trimmedPrompt,
+        imageUrl: imageUrl || undefined,
+        aspectRatio: resolveGrokVideoAspectRatio(options.aspectRatio ?? options.aspect_ratio),
+        videoLength: resolveGrokVideoLength(options.duration),
+        resolutionName: resolveGrokVideoResolution(options.resolution),
+        preset: options.preset === 'fun' || options.preset === 'normal' || options.preset === 'spicy'
+          ? options.preset
+          : 'custom',
+      })
+      return {
+        success: true,
+        videoUrl: grokResult.videoUrl,
+      }
+    }
+
+    const seconds = normalizeDuration(options.duration)
+    const size = resolveFinalSize(options)
     const requestPayload: Record<string, unknown> = {
       prompt: trimmedPrompt,
       model,
@@ -229,13 +425,12 @@ export class OpenAICompatibleVideoGenerator extends BaseVideoGenerator {
       ...(size ? { size } : {}),
     }
 
-    // Handle image reference (only for SDK path, fallback uses image_url)
     let inputReference: File | undefined
     if (imageUrl) {
       inputReference = await toUploadFileFromImageUrl(imageUrl)
     }
 
-    // Strategy: try OpenAI SDK first (/v1/videos), fallback to /v1/video/create
+    // Strategy: try OpenAI SDK first (/v1/videos), fallback to /video/create.
     let videoId: string
 
     try {
@@ -255,7 +450,6 @@ export class OpenAICompatibleVideoGenerator extends BaseVideoGenerator {
       }
       videoId = response.id
     } catch (sdkError) {
-      // If endpoint is not supported, fallback to /video/create
       if (!isEndpointUnsupportedError(sdkError)) {
         throw sdkError
       }

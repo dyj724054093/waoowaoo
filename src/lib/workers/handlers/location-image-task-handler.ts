@@ -1,6 +1,6 @@
 import { type Job } from 'bullmq'
 import { prisma } from '@/lib/prisma'
-import { addLocationPromptSuffix, getArtStylePrompt } from '@/lib/constants'
+import { addLocationPromptSuffix, applyNightVisualHardConstraints, getEffectiveArtStylePrompt } from '@/lib/constants'
 import { type TaskJobData } from '@/lib/task/types'
 import { reportTaskProgress } from '../shared'
 import {
@@ -47,7 +47,7 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
   const modelId = models.locationModel
   if (!modelId) throw new Error('Location model not configured')
 
-  const artStyle = getArtStylePrompt(models.artStyle, job.data.locale)
+  const artStyle = getEffectiveArtStylePrompt(models.artStyle, job.data.locale)
 
   // targetId may be locationId (group) or locationImageId (single)
   const maybeLocationImage = await db.locationImage.findUnique({
@@ -122,7 +122,8 @@ export async function handleLocationImageTask(job: Job<TaskJobData>) {
     const promptBody = item.description || ''
     if (!promptBody) continue
 
-    const prompt = artStyle ? `${addLocationPromptSuffix(promptBody)}，${artStyle}` : addLocationPromptSuffix(promptBody)
+    const promptBase = artStyle ? `${artStyle}，${addLocationPromptSuffix(promptBody)}` : addLocationPromptSuffix(promptBody)
+    const prompt = applyNightVisualHardConstraints(promptBase, job.data.locale === 'en' ? 'en' : 'zh')
     await reportTaskProgress(job, 20 + Math.floor((i / Math.max(locationImages.length, 1)) * 55), {
       stage: 'generate_location_image',
       imageId: item.id,

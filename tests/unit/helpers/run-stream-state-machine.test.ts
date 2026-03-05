@@ -72,10 +72,61 @@ describe('run stream state-machine', () => {
       },
     })
 
-    expect(output).toContain('【错误】')
+    expect(output).toContain('\u3010\u9519\u8bef\u3011')
     expect(output).toContain('fetch failed sending request')
   })
 
+
+  it('prefers final output when both reasoning and final text exist', () => {
+    const output = getStageOutput({
+      id: 'step-both',
+      attempt: 1,
+      title: 'both',
+      stepIndex: 1,
+      stepTotal: 1,
+      status: 'completed',
+      textOutput: 'FINAL_OK',
+      reasoningOutput: 'REASONING_SHOULD_NOT_BE_IN_FINAL',
+      textLength: 8,
+      reasoningLength: 30,
+      message: '',
+      errorMessage: null,
+      updatedAt: Date.now(),
+      seqByLane: {
+        text: 0,
+        reasoning: 0,
+      },
+    })
+
+    expect(output.startsWith('\u3010\u6700\u7ec8\u7ed3\u679c\u3011')).toBe(true)
+    expect(output).toContain('FINAL_OK')
+    expect(output).not.toContain('REASONING_SHOULD_NOT_BE_IN_FINAL')
+  })
+
+  it('removes leaked think tags and unwraps single fenced output', () => {
+    const output = getStageOutput({
+      id: 'step-clean',
+      attempt: 1,
+      title: 'clean',
+      stepIndex: 1,
+      stepTotal: 1,
+      status: 'completed',
+      textOutput: '<think>hidden</think>```json\n{"ok":true}\n```',
+      reasoningOutput: '<think>internal</think>visible',
+      textLength: 10,
+      reasoningLength: 10,
+      message: '',
+      errorMessage: null,
+      updatedAt: Date.now(),
+      seqByLane: {
+        text: 0,
+        reasoning: 0,
+      },
+    })
+
+    expect(output).toContain('{"ok":true}')
+    expect(output).not.toContain('<think>')
+  })
   it('merges retry attempts into one step instead of duplicating stage entries', () => {
     const runId = 'run-2'
     const state = applySequence([

@@ -1,0 +1,48 @@
+﻿You are a location recall auditor.
+Goal: when first-pass extraction misses production-relevant locations, recover them.
+
+[Source Text]
+{input}
+
+[First-pass Locations]
+{existing_locations_json}
+
+[Existing Location Library]
+{locations_lib_name}
+
+[Recall Rules]
+1. Return only locations missing from first pass.
+2. If a recalled location already exists in the library, still output it and reuse the exact library name.
+3. If a candidate is only an alias of an existing location (including '/' aliases), do not duplicate it.
+4. Prioritize spatial hierarchy with independent actions: outdoor vs indoor, entrance/perimeter vs hall/core, rooftop/floor/underground, and functionally distinct sub-areas.
+5. Do not over-segment. Add a location only when function or action is clearly independent.
+6. Exclude abstract/metaphorical/passing mentions.
+7. If first-pass is empty but source text has clear action locations, you must recall core action locations (1-3 items) instead of returning empty directly.
+
+[Description Rules]
+- For each recalled location, provide 3 descriptions.
+- Environment-only, no named protagonist.
+- Wide-angle/full-scene perspective with spatial layers, object layout, and lighting direction.
+
+[Output]
+JSON only (no markdown, no explanations, no <think>):
+{
+  "locations": [
+    {
+      "name": "location_name",
+      "summary": "short usage summary",
+      "has_crowd": false,
+      "crowd_description": "",
+      "descriptions": [
+        "[location_name] description 1",
+        "[location_name] description 2",
+        "[location_name] description 3"
+      ]
+    }
+  ]
+}
+
+[Strict]
+- If nothing is missing, return: {"locations":[]}.
+- Do not output undefined fields.
+- Output only newly recalled locations.

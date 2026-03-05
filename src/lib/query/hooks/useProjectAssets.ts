@@ -100,12 +100,21 @@ export function useProjectAssets(projectId: string | null) {
                         const lastError = appearanceState?.lastError
                             || characterState?.lastError
                             || null
+                        const runningState = isRunningPhase(appearanceState?.phase)
+                            ? appearanceState
+                            : isRunningPhase(characterState?.phase)
+                                ? characterState
+                                : null
+                        const mergedState = appearanceState || characterState || null
                         return {
                             ...appearance,
                             imageTaskRunning:
                                 isRunningPhase(appearanceState?.phase) ||
                                 isRunningPhase(characterState?.phase),
                             lastError,
+                            taskPhase: mergedState?.phase || 'idle',
+                            runningTaskId: runningState?.runningTaskId || null,
+                            runningTaskType: runningState?.runningTaskType || null,
                         }
                     }),
                 }

@@ -24,4 +24,4 @@ Execution rules:
 2. Use reference images for style/identity consistency only.
 3. Repaint the background according to shot type and angle.
 4. If storyboard conflicts with source text, keep narrative logic from source text.
-5. Keep final visual style consistent with provided references.
+5. Style priority: obey {style} first; references are only for identity/composition. If references conflict with {style}, follow {style}. For realistic style, forbid anime/cartoon/2D rendering.

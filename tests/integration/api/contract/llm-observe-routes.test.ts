@@ -348,7 +348,7 @@ describe('api contract - llm observe routes (behavior)', () => {
         userId: 'user-1',
       }))
 
-      const callArg = maybeSubmitLLMTaskMock.mock.calls.at(-1)?.[0] as Record<string, unknown> | undefined
+      const callArg = (maybeSubmitLLMTaskMock.mock.calls.at(-1) as unknown[] | undefined)?.[0] as Record<string, unknown> | undefined
       expect(callArg?.type).toBe(routeCase.expectedTaskType)
       expect(callArg?.targetType).toBe(routeCase.expectedTargetType)
       expect(callArg?.projectId).toBe(routeCase.expectedProjectId)

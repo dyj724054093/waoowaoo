@@ -88,7 +88,7 @@ describe('worker image-task-handlers-core', () => {
 
   it('fails fast when modify task payload is incomplete', async () => {
     const job = buildJob({})
-    await expect(handleModifyAssetImageTask(job)).rejects.toThrow('modify task missing type/modifyPrompt')
+    await expect(handleModifyAssetImageTask(job)).rejects.toThrow('modify task missing type')
   })
 
   it('updates location image with expected generation options and persistence payload', async () => {
@@ -125,10 +125,39 @@ describe('worker image-task-handlers-core', () => {
       }),
     )
 
-    const updateArg = prismaMock.locationImage.update.mock.calls.at(-1)?.[0]
+    const generationCall = (utilsMock.resolveImageSourceFromGeneration.mock.calls.at(-1) as unknown[] | undefined)?.[1] as {
+      prompt?: string
+    } | undefined
+    expect(generationCall?.prompt).toContain('add heavy rain')
+    expect(generationCall?.prompt).toContain('logo')
+
+    const updateArg = (prismaMock.locationImage.update.mock.calls.at(-1) as unknown[] | undefined)?.[0]
     const updateData = readUpdateData(updateArg)
     expect(updateData.previousImageUrl).toBe('cos/location-old.png')
     expect(updateData.imageUrl).toBe('cos/new-image.png')
+  })
+
+  it('falls back to high-fidelity image-to-image prompt when modifyPrompt is empty', async () => {
+    prismaMock.locationImage.findUnique.mockResolvedValue({
+      id: 'location-image-2',
+      locationId: 'location-2',
+      imageUrl: 'cos/location-old-2.png',
+      location: { name: 'Harbor' },
+    })
+
+    const job = buildJob({
+      type: 'location',
+      locationImageId: 'location-image-2',
+      extraImageUrls: ['https://example.com/location-ref-2.png'],
+    })
+
+    await handleModifyAssetImageTask(job)
+
+    const callArg = (utilsMock.resolveImageSourceFromGeneration.mock.calls.at(-1) as unknown[] | undefined)?.[1] as {
+      prompt?: string
+    } | undefined
+    expect(callArg?.prompt).not.toContain('add heavy rain')
+    expect(callArg?.prompt).toContain('UI')
   })
 
   it('updates storyboard panel image and keeps candidateImages reset', async () => {
@@ -170,7 +199,7 @@ describe('worker image-task-handlers-core', () => {
       }),
     )
 
-    const updateArg = prismaMock.novelPromotionPanel.update.mock.calls.at(-1)?.[0]
+    const updateArg = (prismaMock.novelPromotionPanel.update.mock.calls.at(-1) as unknown[] | undefined)?.[0]
     const updateData = readUpdateData(updateArg)
     expect(updateData.previousImageUrl).toBe('cos/panel-old.png')
     expect(updateData.imageUrl).toBe('cos/new-image.png')

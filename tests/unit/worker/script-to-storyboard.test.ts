@@ -334,12 +334,12 @@ describe('worker script-to-storyboard behavior', () => {
     expect(chatCompletionMock).toHaveBeenCalledTimes(2)
     expect(parseVoiceLinesJsonMock).toHaveBeenCalledTimes(2)
     expect(withInternalLLMStreamCallbacksMock).toHaveBeenCalledTimes(3)
-    expect(chatCompletionMock.mock.calls[0]?.[3]).toEqual(expect.objectContaining({
+    expect((chatCompletionMock.mock.calls[0] as unknown[])?.[3]).toEqual(expect.objectContaining({
       action: 'voice_analyze',
       streamStepId: 'voice_analyze',
       streamStepAttempt: 1,
     }))
-    expect(chatCompletionMock.mock.calls[1]?.[3]).toEqual(expect.objectContaining({
+    expect((chatCompletionMock.mock.calls[1] as unknown[])?.[3]).toEqual(expect.objectContaining({
       action: 'voice_analyze',
       streamStepId: 'voice_analyze',
       streamStepAttempt: 2,

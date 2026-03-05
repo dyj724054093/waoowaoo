@@ -1,6 +1,6 @@
 import { type Job } from 'bullmq'
 import { prisma } from '@/lib/prisma'
-import { getArtStylePrompt } from '@/lib/constants'
+import { applyNightVisualHardConstraints, getEffectiveArtStylePrompt } from '@/lib/constants'
 import { createScopedLogger } from '@/lib/logging/core'
 import { type TaskJobData } from '@/lib/task/types'
 import { reportTaskProgress } from '../shared'
@@ -21,6 +21,7 @@ import {
   resolveNovelData,
 } from './image-task-handler-shared'
 import { buildPrompt, PROMPT_IDS } from '@/lib/prompt-i18n'
+import { findLocationByReferenceName } from '@/lib/location-matching'
 
 function parseJsonUnknown(raw: string | null | undefined): unknown | null {
   if (!raw) return null
@@ -100,8 +101,9 @@ function buildPanelPromptContext(params: {
 
   const locationContext = (() => {
     if (!params.panel.location) return null
-    const matchedLocation = (params.projectData.locations || []).find(
-      (item) => item.name.toLowerCase() === params.panel.location!.toLowerCase(),
+    const matchedLocation = findLocationByReferenceName(
+      params.projectData.locations || [],
+      params.panel.location,
     )
     if (!matchedLocation) return null
     const selectedImage = (matchedLocation.images || []).find((item) => item.isSelected) || matchedLocation.images?.[0]
@@ -194,7 +196,7 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
     },
   })
 
-  const artStyle = getArtStylePrompt(modelConfig.artStyle, job.data.locale)
+  const artStyle = getEffectiveArtStylePrompt(modelConfig.artStyle, job.data.locale)
   if (!projectData.videoRatio) throw new Error('Project videoRatio not configured')
   const aspectRatio = projectData.videoRatio
   const promptContext = buildPanelPromptContext({
@@ -213,13 +215,14 @@ export async function handlePanelImageTask(job: Job<TaskJobData>) {
     projectData,
   })
   const contextJson = JSON.stringify(promptContext, null, 2)
-  const prompt = buildPanelPrompt({
+  const promptBase = buildPanelPrompt({
     locale: job.data.locale,
     aspectRatio,
     styleText: artStyle || '与参考图风格一致',
     sourceText: panel.srtSegment || panel.description || '',
     contextJson,
   })
+  const prompt = applyNightVisualHardConstraints(promptBase, job.data.locale === 'en' ? 'en' : 'zh')
   logger.info({
     message: 'panel image prompt resolved',
     details: {

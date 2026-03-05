@@ -30,7 +30,7 @@ const authState = vi.hoisted<AuthState>(() => ({
   projectMode: 'novel-promotion',
 }))
 
-const submitTaskMock = vi.hoisted(() => vi.fn<[], Promise<SubmitResult>>())
+const submitTaskMock = vi.hoisted(() => vi.fn<() => Promise<SubmitResult>>())
 
 const configServiceMock = vi.hoisted(() => ({
   getUserModelConfig: vi.fn(async () => ({
@@ -448,7 +448,7 @@ describe('api contract - direct submit routes (behavior)', () => {
         userId: 'user-1',
       }))
 
-      const submitArg = submitTaskMock.mock.calls.at(-1)?.[0] as Record<string, unknown> | undefined
+      const submitArg = (submitTaskMock.mock.calls.at(-1) as unknown[] | undefined)?.[0] as Record<string, unknown> | undefined
       expect(submitArg?.type).toBe(routeCase.expectedTaskType)
       expect(submitArg?.targetType).toBe(routeCase.expectedTargetType)
       expect(submitArg?.projectId).toBe(routeCase.expectedProjectId)

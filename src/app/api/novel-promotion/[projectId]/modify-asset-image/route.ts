@@ -36,9 +36,9 @@ export const POST = apiHandler(async (
   const body = await request.json()
   const locale = resolveRequiredTaskLocale(request, body)
   const type = body?.type
-  const modifyPrompt = body?.modifyPrompt
+  const modifyPrompt = typeof body?.modifyPrompt === 'string' ? body.modifyPrompt.trim() : ''
 
-  if (!type || !modifyPrompt) {
+  if (!type) {
     throw new ApiError('INVALID_PARAMS')
   }
 
@@ -80,6 +80,7 @@ export const POST = apiHandler(async (
   const baseMeta = toObject(body?.meta)
   const payload = {
     ...body,
+    modifyPrompt,
     extraImageUrls: extraImageAudit.normalized,
     meta: {
       ...baseMeta,

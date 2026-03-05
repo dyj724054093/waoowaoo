@@ -4,8 +4,11 @@ Refine panel-level visual details and video prompts.
 Panel input JSON:
 {panels_json}
 
-Character info:
+Character appearance info:
 {characters_age_gender}
+
+Character profile summary (identity, distinguishing features, personality, visual keywords):
+{characters_profile_summary}
 
 Location info:
 {locations_description}
@@ -45,5 +48,8 @@ Rules:
 1. Keep panel order unchanged.
 2. Keep source_text semantically aligned with input; do not rewrite story meaning.
 3. video_prompt should be motion-ready and concrete.
-4. Prefer age+gender wording in video_prompt when naming actors in camera directions.
+4. Use visual distinguishing tags in video_prompt (e.g., "scarred short-haired man", "slim girl with buzz cut") instead of character names. Avoid generic terms like "young man/woman" without visual features.
 5. Return JSON array only.
+6. Shot type and camera movement must be logically consistent: if shot_type is "long shot", do not use "push in" (which changes to medium/close). If transitioning, mark shot_type as "long shot → medium push in".
+7. video_prompt must include lighting that matches the time of day from source_text. Late night = very dark, cold tones, heavy shadows. Never make a midnight scene look bright.
+8. Extract atmosphere from source_text (metaphors, weather, sounds) and weave into video_prompt.

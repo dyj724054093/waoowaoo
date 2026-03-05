@@ -19,6 +19,7 @@ export const POST = apiHandler(async (request: NextRequest) => {
   if (!userInstruction) {
     throw new ApiError('INVALID_PARAMS')
   }
+  const artStyle = typeof body.artStyle === 'string' ? body.artStyle : ''
 
   const userConfig = await getUserModelConfig(session.user.id)
   if (!userConfig.analysisModel) {
@@ -26,14 +27,16 @@ export const POST = apiHandler(async (request: NextRequest) => {
   }
 
   const dedupeDigest = createHash('sha1')
-    .update(`${session.user.id}:location:${userInstruction}`)
+    .update(`${session.user.id}:location:${userInstruction}:${artStyle || 'default'}`)
     .digest('hex')
     .slice(0, 16)
 
   const payload = {
     userInstruction,
     analysisModel: userConfig.analysisModel,
-    displayMode: 'detail' as const}
+    displayMode: 'detail' as const,
+    ...(artStyle ? { artStyle } : {}),
+  }
 
   const asyncTaskResponse = await maybeSubmitLLMTask({
     request,

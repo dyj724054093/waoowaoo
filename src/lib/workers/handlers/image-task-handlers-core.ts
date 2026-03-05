@@ -25,6 +25,7 @@ import {
 import { executeAiVisionStep } from '@/lib/ai-runtime'
 import { buildPrompt, PROMPT_IDS } from '@/lib/prompt-i18n'
 import { createScopedLogger } from '@/lib/logging/core'
+import { buildImageEditPrompt } from './image-edit-prompt'
 
 const logger = createScopedLogger({ module: 'worker.modify-asset-image' })
 
@@ -40,10 +41,10 @@ interface LocationImageRecord {
 export async function handleModifyAssetImageTask(job: Job<TaskJobData>) {
   const payload = (job.data.payload || {}) as AnyObj
   const type = payload.type
-  const modifyPrompt = payload.modifyPrompt
+  const modifyPrompt = typeof payload.modifyPrompt === 'string' ? payload.modifyPrompt.trim() : ''
 
-  if (!type || !modifyPrompt) {
-    throw new Error('modify task missing type/modifyPrompt')
+  if (!type) {
+    throw new Error('modify task missing type')
   }
 
   const projectModels = await getProjectModels(job.data.projectId, job.data.userId)
@@ -85,7 +86,7 @@ export async function handleModifyAssetImageTask(job: Job<TaskJobData>) {
     const normalizedExtras = await normalizeReferenceImagesForGeneration(extraReferenceInputs)
     const referenceImages = Array.from(new Set([requiredReference, ...normalizedExtras]))
 
-    const prompt = `请根据以下指令修改图片，保持人物核心特征一致：\n${modifyPrompt}`
+    const prompt = buildImageEditPrompt('character', modifyPrompt)
     const source = await resolveImageSourceFromGeneration(job, {
       userId: job.data.userId,
       modelId: editModel,
@@ -181,7 +182,7 @@ export async function handleModifyAssetImageTask(job: Job<TaskJobData>) {
     const normalizedExtras = await normalizeReferenceImagesForGeneration(extraReferenceInputs)
     const referenceImages = Array.from(new Set([requiredReference, ...normalizedExtras]))
 
-    const prompt = `请根据以下指令修改场景图片，保持整体风格一致：\n${modifyPrompt}`
+    const prompt = buildImageEditPrompt('location', modifyPrompt)
     const source = await resolveImageSourceFromGeneration(job, {
       userId: job.data.userId,
       modelId: editModel,
@@ -275,7 +276,7 @@ export async function handleModifyAssetImageTask(job: Job<TaskJobData>) {
 
     const normalizedExtras = await normalizeReferenceImagesForGeneration(extraReferenceInputs)
     const uniqueReferences = Array.from(new Set([requiredReference, ...normalizedExtras]))
-    const prompt = `请根据以下指令修改分镜图片，保持镜头语言和主体一致：\n${modifyPrompt}`
+    const prompt = buildImageEditPrompt('storyboard', modifyPrompt)
     const source = await resolveImageSourceFromGeneration(job, {
       userId: job.data.userId,
       modelId: editModel,

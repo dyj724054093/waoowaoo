@@ -86,7 +86,7 @@ export const POST = apiHandler(async (
     targetType,
     targetId,
     payload: withTaskUiPayload(billingPayload, { hasOutputAtStart }),
-    dedupeKey: `${taskType}:${targetId}`,
+    dedupeKey: `${taskType}:${targetId}:${projectModelConfig.artStyle || 'default'}`,
     billingInfo: buildDefaultTaskBillingInfo(taskType, billingPayload)
   })
 

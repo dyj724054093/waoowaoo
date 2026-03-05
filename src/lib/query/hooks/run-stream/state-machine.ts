@@ -388,11 +388,30 @@ export function applyRunStreamEvent(prev: RunState | null, event: RunStreamEvent
 
 export function getStageOutput(step: RunStepState | null) {
   if (!step) return ''
-  if (step.reasoningOutput && step.textOutput) {
-    return `【思考过程】\n${step.reasoningOutput}\n\n【最终结果】\n${step.textOutput}`
+
+  const normalizeOutput = (raw: string): string => {
+    const value = typeof raw === 'string' ? raw : ''
+    if (!value) return ''
+
+    // Some providers may leak hidden thinking markers into visible text output.
+    let cleaned = value
+      .replace(/<think>[\s\S]*?<\/think>/gi, '')
+      .replace(/<\/?think>/gi, '')
+      .trim()
+
+    // Unwrap a single fenced payload for cleaner console display.
+    const fenced = cleaned.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)
+    if (fenced && fenced[1]) cleaned = fenced[1].trim()
+
+    return cleaned
   }
-  if (step.reasoningOutput) return `【思考过程】\n${step.reasoningOutput}`
-  if (step.textOutput) return `【最终结果】\n${step.textOutput}`
-  if (step.status === 'failed' && step.errorMessage) return `【错误】\n${step.errorMessage}`
+
+  const textOutput = normalizeOutput(step.textOutput)
+  const reasoningOutput = normalizeOutput(step.reasoningOutput)
+
+  // Prefer final output in user-facing console; reasoning is fallback only.
+  if (textOutput) return `\u3010\u6700\u7ec8\u7ed3\u679c\u3011\n${textOutput}`
+  if (reasoningOutput) return `\u3010\u601d\u8003\u8fc7\u7a0b\u3011\n${reasoningOutput}`
+  if (step.status === 'failed' && step.errorMessage) return `\u3010\u9519\u8bef\u3011\n${step.errorMessage}`
   return ''
 }

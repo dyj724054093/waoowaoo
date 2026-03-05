@@ -221,6 +221,12 @@ model NovelPromotionPanel {
   sketchImageMedia  MediaObject?              @relation("NovelPromotionPanelSketchMedia", fields: [sketchImageMediaId], references: [id], onDelete: SetNull)
   photographyRules  String?                   @db.Text
   actingNotes       String?                   @db.Text // 演技指导数据 JSON
+  // ── Seedance 扩展字段 ──
+  expectedDuration    Float?                    // seedance: 期望时长（秒）
+  shotRelation        String?                   // seedance: 镜头关系
+  pace                String?                   // seedance: 镜头节奏
+  characterLabels     Json?                     // seedance: CharacterLabel[]
+  tailFrameHint       Json?                     // P2: TailFrameHint
   previousImageUrl  String?                   @db.Text
   previousImageMediaId String?
   previousImageMedia MediaObject?             @relation("NovelPromotionPanelPreviousImageMedia", fields: [previousImageMediaId], references: [id], onDelete: SetNull)

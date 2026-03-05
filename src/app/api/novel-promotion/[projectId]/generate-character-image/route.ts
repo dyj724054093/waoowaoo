@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 import { resolveTaskLocale } from '@/lib/task/resolve-locale'
+import { ART_STYLES } from '@/lib/constants'
 
 function toObject(value: unknown): Record<string, unknown> {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
@@ -56,18 +57,11 @@ export const POST = apiHandler(async (
     if (artStyle) {
         const novelData = await prisma.novelPromotionProject.findUnique({ where: { projectId } })
         if (novelData) {
-            // 将风格转换为提示词
-            const ART_STYLES = [
-                { value: 'american-comic', prompt: '美式漫画风格' },
-                { value: 'chinese-comic', prompt: '精致国漫风格' },
-                { value: 'anime', prompt: '日系动漫风格' },
-                { value: 'realistic', prompt: '真人照片写实风格' }
-            ]
             const style = ART_STYLES.find(s => s.value === artStyle)
             if (style) {
                 await prisma.novelPromotionProject.update({
                     where: { id: novelData.id },
-                    data: { artStylePrompt: style.prompt }
+                    data: { artStyle, artStylePrompt: style.promptZh },
                 })
             }
         }

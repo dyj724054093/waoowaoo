@@ -161,11 +161,18 @@ function readInt(payload: JsonRecord, key: string): number | null {
   return null
 }
 
+const MAX_DB_ERROR_MESSAGE_LENGTH = 4000
+
+function truncateForDb(value: string | null): string | null {
+  if (!value) return null
+  if (value.length <= MAX_DB_ERROR_MESSAGE_LENGTH) return value
+  return value.slice(0, MAX_DB_ERROR_MESSAGE_LENGTH)
+}
 function resolveErrorMessage(payload: JsonRecord): string | null {
   const direct = readString(payload, 'message') || readString(payload, 'errorMessage')
-  if (direct) return direct
+  if (direct) return truncateForDb(direct)
   const errorPayload = toObject(payload.error)
-  return readString(errorPayload, 'message') || readString(errorPayload, 'errorMessage')
+  return truncateForDb(readString(errorPayload, 'message') || readString(errorPayload, 'errorMessage'))
 }
 
 function normalizeLane(lane: string | null): 'text' | 'reasoning' | null {

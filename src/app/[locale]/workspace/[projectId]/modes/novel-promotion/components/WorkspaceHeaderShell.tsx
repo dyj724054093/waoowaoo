@@ -48,6 +48,7 @@ interface WorkspaceHeaderShellProps {
   capabilityOverrides: CapabilitySelections
   videoRatio: string | null | undefined
   ttsRate: string | null | undefined
+  workflowMode: string | null | undefined
   onUpdateConfig: (key: string, value: unknown) => Promise<void>
   globalAssetText: string
   projectName: string
@@ -114,6 +115,7 @@ export default function WorkspaceHeaderShell({
   assetLibraryLabel,
   settingsLabel,
   refreshTitle,
+  workflowMode,
 }: WorkspaceHeaderShellProps) {
   return (
     <>
@@ -142,6 +144,8 @@ export default function WorkspaceHeaderShell({
         onVideoRatioChange={(value) => { onUpdateConfig('videoRatio', value) }}
         onCapabilityOverridesChange={(value) => { onUpdateConfig('capabilityOverrides', value) }}
         onTTSRateChange={(value) => { onUpdateConfig('ttsRate', value) }}
+        workflowMode={workflowMode ?? undefined}
+        onWorkflowModeChange={(value) => { onUpdateConfig('workflowMode', value) }}
       />
 
       <WorldContextModal

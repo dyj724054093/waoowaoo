@@ -31,6 +31,7 @@ import {
 } from './script-to-storyboard-helpers'
 import { buildPrompt, getPromptTemplate, PROMPT_IDS } from '@/lib/prompt-i18n'
 import { resolveAnalysisModel } from './resolve-analysis-model'
+import { parseSeedancePanels, validateSeedanceOutput } from '@/lib/seedance'
 
 type AnyObj = Record<string, unknown>
 const MAX_VOICE_ANALYZE_ATTEMPTS = 2
@@ -45,7 +46,7 @@ export async function handleScriptToStoryboardTask(job: Job<TaskJobData>) {
   const episodeIdRaw = typeof payload.episodeId === 'string' ? payload.episodeId : (job.data.episodeId || '')
   const episodeId = episodeIdRaw.trim()
   const inputModel = typeof payload.model === 'string' ? payload.model.trim() : ''
-  const reasoning = payload.reasoning !== false
+  const reasoning = payload.reasoning === true
   const requestedReasoningEffort = parseEffort(payload.reasoningEffort)
   const temperature = parseTemperature(payload.temperature)
 
@@ -109,7 +110,7 @@ export async function handleScriptToStoryboardTask(job: Job<TaskJobData>) {
   })
   const capabilityReasoningEffort = llmCapabilityOptions.reasoningEffort
   const reasoningEffort = requestedReasoningEffort
-    || (isReasoningEffort(capabilityReasoningEffort) ? capabilityReasoningEffort : 'high')
+    || (isReasoningEffort(capabilityReasoningEffort) ? capabilityReasoningEffort : 'medium')
 
   await reportTaskProgress(job, 10, {
     stage: 'script_to_storyboard_prepare',
@@ -117,10 +118,36 @@ export async function handleScriptToStoryboardTask(job: Job<TaskJobData>) {
     displayMode: 'detail',
   })
 
-  const phase1PlanTemplate = getPromptTemplate(PROMPT_IDS.NP_AGENT_STORYBOARD_PLAN, job.data.locale)
-  const phase2CinematographyTemplate = getPromptTemplate(PROMPT_IDS.NP_AGENT_CINEMATOGRAPHER, job.data.locale)
+  // ── Seedance 模板分流（含降级安全） ──
+  const workflowMode = (novelData.workflowMode || 'srt') as string
+  let isSeedance = workflowMode === 'seedance'
+
+  let phase1PlanTemplate: string
+  let phase2CinematographyTemplate: string
+  let phase3DetailTemplate: string
   const phase2ActingTemplate = getPromptTemplate(PROMPT_IDS.NP_AGENT_ACTING_DIRECTION, job.data.locale)
-  const phase3DetailTemplate = getPromptTemplate(PROMPT_IDS.NP_AGENT_STORYBOARD_DETAIL, job.data.locale)
+
+  if (isSeedance) {
+    try {
+      phase1PlanTemplate = getPromptTemplate(PROMPT_IDS.NP_SEEDANCE_STORYBOARD_PLAN, job.data.locale)
+      phase2CinematographyTemplate = getPromptTemplate(PROMPT_IDS.NP_SEEDANCE_CINEMATOGRAPHER, job.data.locale)
+      phase3DetailTemplate = getPromptTemplate(PROMPT_IDS.NP_SEEDANCE_DETAIL, job.data.locale)
+    } catch (err) {
+      // 静默降级：seedance 模板加载失败 → 退回默认模板
+      logAIAnalysis(job.data.userId, 'worker', projectId, project.name, {
+        action: 'SEEDANCE_TEMPLATE_FALLBACK',
+        error: { message: err instanceof Error ? err.message : String(err) },
+      })
+      isSeedance = false
+      phase1PlanTemplate = getPromptTemplate(PROMPT_IDS.NP_AGENT_STORYBOARD_PLAN, job.data.locale)
+      phase2CinematographyTemplate = getPromptTemplate(PROMPT_IDS.NP_AGENT_CINEMATOGRAPHER, job.data.locale)
+      phase3DetailTemplate = getPromptTemplate(PROMPT_IDS.NP_AGENT_STORYBOARD_DETAIL, job.data.locale)
+    }
+  } else {
+    phase1PlanTemplate = getPromptTemplate(PROMPT_IDS.NP_AGENT_STORYBOARD_PLAN, job.data.locale)
+    phase2CinematographyTemplate = getPromptTemplate(PROMPT_IDS.NP_AGENT_CINEMATOGRAPHER, job.data.locale)
+    phase3DetailTemplate = getPromptTemplate(PROMPT_IDS.NP_AGENT_STORYBOARD_DETAIL, job.data.locale)
+  }
 
   const streamContext = createWorkerLLMStreamContext(job, 'script_to_storyboard')
   const callbacks = createWorkerLLMStreamCallbacks(job, streamContext)
@@ -286,7 +313,38 @@ export async function handleScriptToStoryboardTask(job: Job<TaskJobData>) {
   const persistedStoryboards = await persistStoryboardsAndPanels({
     episodeId,
     clipPanels: orchestratorResult.clipPanels,
+    workflowMode,
   })
+
+  // ── Seedance 后置校验 ──
+  if (isSeedance) {
+    const allPanels = orchestratorResult.clipPanels.flatMap(cp => cp.finalPanels)
+    const seedanceExtensions = parseSeedancePanels(allPanels as Record<string, unknown>[])
+    const totalContentLength = clips.reduce(
+      (sum, clip) => sum + (typeof clip.content === 'string' ? clip.content.length : 0), 0,
+    )
+    const panelsForValidation = allPanels.map((p, i) => ({
+      panel_number: p.panel_number || i + 1,
+      pace: seedanceExtensions[i]?.pace,
+      expected_duration: seedanceExtensions[i]?.expected_duration,
+    }))
+    const warnings = validateSeedanceOutput(panelsForValidation, seedanceExtensions, totalContentLength)
+
+    logAIAnalysis(job.data.userId, 'worker', projectId, project.name, {
+      action: 'SEEDANCE_GENERATION_SUMMARY',
+      input: { workflowMode, clipCount: clips.length },
+      output: {
+        totalPanels: allPanels.length,
+        fieldsPopulated: {
+          expectedDuration: seedanceExtensions.filter(e => e.expected_duration != null).length,
+          shotRelation: seedanceExtensions.filter(e => e.shot_relation != null).length,
+          pace: seedanceExtensions.filter(e => e.pace != null).length,
+          characterLabels: seedanceExtensions.filter(e => (e.character_labels?.length ?? 0) > 0).length,
+        },
+        validationWarnings: warnings,
+      },
+    })
+  }
 
   if (!episode.novelText || !episode.novelText.trim()) {
     throw new Error('No novel text to analyze')
