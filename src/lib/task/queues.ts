@@ -19,9 +19,18 @@ const defaultJobOptions: JobsOptions = {
   },
 }
 
+const imageJobOptions: JobsOptions = {
+  ...defaultJobOptions,
+  attempts: 3,
+  backoff: {
+    type: 'exponential',
+    delay: 15_000,
+  },
+}
+
 export const imageQueue = new Queue<TaskJobData>(QUEUE_NAME.IMAGE, {
   connection: queueRedis,
-  defaultJobOptions,
+  defaultJobOptions: imageJobOptions,
 })
 
 export const videoQueue = new Queue<TaskJobData>(QUEUE_NAME.VIDEO, {

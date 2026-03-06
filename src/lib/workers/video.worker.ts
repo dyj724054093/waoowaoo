@@ -62,6 +62,11 @@ type CharacterVisualTag = {
   visualTag: string
 }
 
+type PanelCharacterReference = {
+  name: string
+  appearance?: string | null
+}
+
 function compactText(text: string, maxLen: number): string {
   const cleaned = text.replace(/\s+/g, ' ').trim()
   return cleaned.length > maxLen ? cleaned.slice(0, maxLen) + '…' : cleaned
@@ -81,33 +86,54 @@ function parsePhotographyRules(panel: PanelRecord): PhotographyContext | null {
   }
 }
 
-function parsePanelCharacterNames(panel: PanelRecord): string[] {
+function parsePanelCharacterReferences(panel: PanelRecord): PanelCharacterReference[] {
   if (!panel.characters) return []
   try {
     const parsed = JSON.parse(panel.characters) as unknown
     if (!Array.isArray(parsed)) return []
     return parsed
-      .map((item: unknown) => {
-        if (typeof item === 'string') return item
-        if (typeof item === 'object' && item !== null && 'name' in item) {
-          return typeof (item as Record<string, unknown>).name === 'string'
-            ? (item as Record<string, unknown>).name as string
-            : ''
+      .map((item: unknown): PanelCharacterReference | null => {
+        if (typeof item === 'string') {
+          return { name: item, appearance: null }
         }
-        return ''
+        if (typeof item === 'object' && item !== null) {
+          const record = item as Record<string, unknown>
+          if (typeof record.name !== 'string') return null
+          return {
+            name: record.name,
+            appearance: typeof record.appearance === 'string' ? record.appearance : null,
+          }
+        }
+        return null
       })
-      .filter(Boolean)
+      .filter((item): item is PanelCharacterReference => Boolean(item?.name))
   } catch {
     return []
   }
+}
+
+function parseCharacterAliases(raw: unknown): string[] {
+  if (typeof raw !== 'string' || !raw.trim()) return []
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (Array.isArray(parsed)) {
+      return parsed
+        .filter((item): item is string => typeof item === 'string')
+        .map((item) => item.trim())
+        .filter(Boolean)
+    }
+  } catch {
+    return raw.split('/').map((item) => item.trim()).filter(Boolean)
+  }
+  return []
 }
 
 async function loadCharacterVisualDescriptions(
   panel: PanelRecord,
   projectId: string,
 ): Promise<CharacterVisualTag[]> {
-  const charNames = parsePanelCharacterNames(panel)
-  if (charNames.length === 0) return []
+  const characterRefs = parsePanelCharacterReferences(panel)
+  if (characterRefs.length === 0) return []
 
   const novelData = await prisma.novelPromotionProject.findUnique({
     where: { projectId },
@@ -119,18 +145,23 @@ async function loadCharacterVisualDescriptions(
   })
   if (!novelData?.characters) return []
 
-  return charNames
-    .map((refName) => {
-      const refLower = refName.toLowerCase().trim()
-      const char = novelData.characters.find((c) => {
-        const charLower = c.name.toLowerCase().trim()
-        if (charLower === refLower) return true
-        const aliases = charLower.split('/').map((s) => s.trim()).filter(Boolean)
-        return aliases.includes(refLower)
+  return characterRefs
+    .map((ref) => {
+      const refLower = ref.name.toLowerCase().trim()
+      const requestedAppearance = ref.appearance?.toLowerCase().trim() || null
+      const char = novelData.characters.find((character) => {
+        const candidateNames = [character.name, ...parseCharacterAliases(character.aliases)]
+          .map((item) => item.toLowerCase().trim())
+          .filter(Boolean)
+        return candidateNames.includes(refLower)
       })
       if (!char) return null
 
-      const appearance = char.appearances?.[0]
+      const appearance = requestedAppearance
+        ? char.appearances?.find(
+            (item) => typeof item.changeReason === 'string' && item.changeReason.toLowerCase().trim() === requestedAppearance,
+          ) ?? char.appearances?.[0]
+        : char.appearances?.[0]
       let desc: string | null = null
       if (appearance) {
         if (appearance.descriptions) {
@@ -147,8 +178,8 @@ async function loadCharacterVisualDescriptions(
       }
 
       return {
-        name: refName,
-        visualTag: desc ? compactText(desc, 80) : refName,
+        name: ref.name,
+        visualTag: desc ? compactText(desc, 80) : ref.name,
       }
     })
     .filter((item): item is CharacterVisualTag => item !== null)

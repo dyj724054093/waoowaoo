@@ -24,6 +24,17 @@ type OpenAIImageEditSize =
   | '1536x1024'
   | '1024x1536'
 
+type ProviderErrorLike = {
+  message?: unknown
+  status?: unknown
+  headers?: unknown
+  request_id?: unknown
+  requestId?: unknown
+  error?: unknown
+  provider?: unknown
+  details?: unknown
+}
+
 function toAbsoluteUrlIfNeeded(value: string): string {
   if (!value.startsWith('/')) return value
   const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000'
@@ -44,6 +55,55 @@ function toMimeFromOutputFormat(outputFormat: string | undefined): string {
   if (outputFormat === 'jpeg' || outputFormat === 'jpg') return 'image/jpeg'
   if (outputFormat === 'webp') return 'image/webp'
   return 'image/png'
+}
+
+function toRequestId(headers: unknown): string | undefined {
+  if (!headers || typeof headers !== 'object') return undefined
+  const headerRecord = headers as Record<string, unknown>
+  const requestId = headerRecord['x-request-id'] ?? headerRecord['request-id']
+  return typeof requestId === 'string' && requestId.trim() ? requestId.trim() : undefined
+}
+
+function wrapProviderError(error: unknown, context: {
+  providerId: string
+  operation: 'images.edit' | 'images.generate'
+  model: string
+}): Error & {
+  status?: number
+  provider?: string
+  details?: Record<string, unknown>
+} {
+  const errorLike = (error ?? {}) as ProviderErrorLike
+  const message = error instanceof Error
+    ? error.message
+    : typeof errorLike.message === 'string' && errorLike.message.trim()
+      ? errorLike.message.trim()
+      : `OPENAI_COMPATIBLE_IMAGE_REQUEST_FAILED: ${context.operation}`
+  const requestId = typeof errorLike.requestId === 'string' && errorLike.requestId.trim()
+    ? errorLike.requestId.trim()
+    : typeof errorLike.request_id === 'string' && errorLike.request_id.trim()
+      ? errorLike.request_id.trim()
+      : toRequestId(errorLike.headers)
+  const wrapped = new Error(message) as Error & {
+    status?: number
+    provider?: string
+    details?: Record<string, unknown>
+  }
+
+  if (typeof errorLike.status === 'number') {
+    wrapped.status = errorLike.status
+  }
+  wrapped.provider = context.providerId
+  wrapped.details = {
+    operation: context.operation,
+    model: context.model,
+    providerId: context.providerId,
+    ...(requestId ? { requestId } : {}),
+    ...(typeof errorLike.error === 'object' && errorLike.error ? { upstreamError: errorLike.error as Record<string, unknown> } : {}),
+    ...(typeof errorLike.details === 'object' && errorLike.details ? errorLike.details as Record<string, unknown> : {}),
+  }
+
+  return wrapped
 }
 
 async function toUploadFile(imageSource: string, index: number): Promise<File> {
@@ -232,26 +292,42 @@ export class OpenAICompatibleImageGenerator extends BaseImageGenerator {
     if (referenceImages.length > 0) {
       const quality = normalizeEditQuality(options.quality)
       const size = normalizeEditSize(rawSize)
-      response = await client.images.edit({
-        model,
-        prompt,
-        image: await Promise.all(referenceImages.map((image, index) => toUploadFile(image, index))),
-        response_format: responseFormat,
-        ...(outputFormat ? { output_format: outputFormat } : {}),
-        ...(quality ? { quality } : {}),
-        ...(size ? { size } : {}),
-      })
+      try {
+        response = await client.images.edit({
+          model,
+          prompt,
+          image: await Promise.all(referenceImages.map((image, index) => toUploadFile(image, index))),
+          response_format: responseFormat,
+          ...(outputFormat ? { output_format: outputFormat } : {}),
+          ...(quality ? { quality } : {}),
+          ...(size ? { size } : {}),
+        })
+      } catch (error) {
+        throw wrapProviderError(error, {
+          providerId: config.id,
+          operation: 'images.edit',
+          model,
+        })
+      }
     } else {
       const quality = normalizeGenerateQuality(options.quality)
       const size = normalizeGenerateSize(rawSize)
-      response = await client.images.generate({
-        model,
-        prompt,
-        response_format: responseFormat,
-        ...(outputFormat ? { output_format: outputFormat } : {}),
-        ...(quality ? { quality } : {}),
-        ...(size ? { size } : {}),
-      })
+      try {
+        response = await client.images.generate({
+          model,
+          prompt,
+          response_format: responseFormat,
+          ...(outputFormat ? { output_format: outputFormat } : {}),
+          ...(quality ? { quality } : {}),
+          ...(size ? { size } : {}),
+        })
+      } catch (error) {
+        throw wrapProviderError(error, {
+          providerId: config.id,
+          operation: 'images.generate',
+          model,
+        })
+      }
     }
 
     const image = Array.isArray(response.data) ? response.data[0] : null

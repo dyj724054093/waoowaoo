@@ -1,6 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import { runScriptToStoryboardOrchestrator } from "@/lib/novel-promotion/script-to-storyboard/orchestrator"
+import type { CharacterAsset, LocationAsset } from "@/lib/storyboard-phases"
 
 type LocationDraft = Record<string, unknown>
 
@@ -326,6 +327,15 @@ async function run() {
     }
   }
 
+  const novelPromotionCharacters = [
+    { name: "\u6797\u5c7f", appearances: [] },
+    { name: "\u6c88\u662d", appearances: [] },
+  ] satisfies CharacterAsset[]
+
+  const novelPromotionLocations = [
+    { name: "\u7b2c\u4e03\u7801\u5934\u65e7\u68c0\u75ab\u7ad9", images: [] },
+  ] satisfies LocationAsset[]
+
   const result = await runScriptToStoryboardOrchestrator({
     clips: [
       {
@@ -337,13 +347,8 @@ async function run() {
       },
     ],
     novelPromotionData: {
-      characters: [
-        { name: "\u6797\u5c7f", appearances: [] },
-        { name: "\u6c88\u662d", appearances: [] },
-      ] as any,
-      locations: [
-        { name: "\u7b2c\u4e03\u7801\u5934\u65e7\u68c0\u75ab\u7ad9", images: [] },
-      ] as any,
+      characters: novelPromotionCharacters,
+      locations: novelPromotionLocations,
     },
     promptTemplates: {
       phase1PlanTemplate:

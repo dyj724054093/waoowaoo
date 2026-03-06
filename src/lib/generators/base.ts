@@ -11,9 +11,26 @@ function isChallenge403Message(message: string): boolean {
         || normalized.includes('<html')
         || normalized.includes('upload failed: 403')
 }
+
+function isRateLimitMessage(message: string): boolean {
+    const normalized = message.trim().toLowerCase()
+    return normalized.includes('429')
+        || normalized.includes('too many requests')
+        || normalized.includes('rate limit')
+        || normalized.includes('rate_limit')
+        || normalized.includes('throttl')
+        || normalized.includes('upstream 429')
+}
+
+function shouldRetryImageGenerationError(message: string, attempt: number, maxRetries: number): boolean {
+    if (attempt === maxRetries) return false
+    if (isChallenge403Message(message)) return false
+    if (isRateLimitMessage(message)) return false
+    return true
+}
 /**
  * 生成器基础接口和类型定义
- * 
+ *
  * 策略模式核心：所有生成器实现统一接口
  */
 
@@ -37,6 +54,9 @@ export interface GenerateResult {
     videoUrl?: string         // 视频 URL
     audioUrl?: string         // 音频 URL
     error?: string           // 错误信息
+    status?: number
+    details?: Record<string, unknown>
+    provider?: string
     requestId?: string       // 异步任务 ID（原始格式，向后兼容）
     async?: boolean          // 是否为异步任务
     endpoint?: string        // 异步任务端点（向后兼容）
@@ -115,11 +135,10 @@ export abstract class BaseImageGenerator implements ImageGenerator {
                 return await this.doGenerate(params)
             } catch (error: unknown) {
                 lastError = error
-                const message = error instanceof Error ? error.message : String(error)
+                const message = error instanceof Error ? error.message : String((error as { message?: unknown })?.message || error)
                 _ulogWarn(`[Generator] 尝试 ${attempt}/${maxRetries} 失败: ${message}`)
 
-                // 最后一次尝试，直接抛出
-                if (attempt === maxRetries || isChallenge403Message(message)) {
+                if (!shouldRetryImageGenerationError(message, attempt, maxRetries)) {
                     break
                 }
 
@@ -128,9 +147,24 @@ export abstract class BaseImageGenerator implements ImageGenerator {
             }
         }
 
+        const errorLike = lastError as {
+            message?: unknown
+            status?: unknown
+            details?: unknown
+            provider?: unknown
+        } | null
+        const errorMessage = lastError instanceof Error
+            ? lastError.message
+            : typeof errorLike?.message === 'string' && errorLike.message.trim()
+                ? errorLike.message.trim()
+                : '生成失败'
+
         return {
             success: false,
-            error: lastError instanceof Error ? lastError.message : '生成失败'
+            error: errorMessage,
+            ...(typeof errorLike?.status === 'number' ? { status: errorLike.status } : {}),
+            ...(typeof errorLike?.provider === 'string' ? { provider: errorLike.provider } : {}),
+            ...(typeof errorLike?.details === 'object' && errorLike.details ? { details: errorLike.details as Record<string, unknown> } : {}),
         }
     }
 

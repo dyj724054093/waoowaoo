@@ -304,62 +304,62 @@ describe('story-to-script orchestrator retry', () => {
 
 })
 
-describe(''story-to-script orchestrator recall fallback'', () => {
-  it(''runs location recall when first-pass locations are empty'', async () => {
+describe('story-to-script orchestrator recall fallback', () => {
+  it('runs location recall when first-pass locations are empty', async () => {
     const actionCalls: string[] = []
     const runStep = vi.fn(async (_meta, prompt, action: string) => {
       actionCalls.push(action)
 
-      if (action === ''analyze_characters'') {
-        return { text: JSON.stringify({ characters: [{ name: ''LinYu'', introduction: ''hero'' }] }), reasoning: '''' }
+      if (action === 'analyze_characters') {
+        return { text: JSON.stringify({ characters: [{ name: 'LinYu', introduction: 'hero' }] }), reasoning: '' }
       }
-      if (action === ''analyze_locations'') {
-        return { text: JSON.stringify({ locations: [] }), reasoning: '''' }
+      if (action === 'analyze_locations') {
+        return { text: JSON.stringify({ locations: [] }), reasoning: '' }
       }
-      if (action === ''analyze_locations_recall'') {
-        expect(String(prompt)).toContain(''"locations": []'')
+      if (action === 'analyze_locations_recall') {
+        expect(String(prompt)).toContain('[]')
         return {
           text: JSON.stringify({
-            locations: [{ name: ''药房_夜间'', summary: ''检疫站内部药房'' }],
+            locations: [{ name: '药房_夜间', summary: '检疫站内部药房' }],
           }),
-          reasoning: '''',
+          reasoning: '',
         }
       }
-      if (action === ''split_clips'') {
+      if (action === 'split_clips') {
         return {
           text: JSON.stringify([
             {
-              start: ''林屿停在药房门口'',
-              end: ''沈昭在东门低声确认'',
-              summary: ''药房潜入'',
-              location: ''药房_夜间'',
-              characters: [''LinYu''],
+              start: '林屿停在药房门口',
+              end: '沈昭在东门低声确认',
+              summary: '药房潜入',
+              location: '药房_夜间',
+              characters: ['LinYu'],
             },
           ]),
-          reasoning: '''',
+          reasoning: '',
         }
       }
-      return { text: JSON.stringify({ scenes: [{ id: 1 }] }), reasoning: '''' }
+      return { text: JSON.stringify({ scenes: [{ id: 1 }] }), reasoning: '' }
     })
 
     const result = await runStoryToScriptOrchestrator({
-      content: ''林屿停在药房门口。沈昭在东门低声确认。'',
+      content: '林屿停在药房门口。沈昭在东门低声确认。',
       baseCharacters: [],
       baseLocations: [],
       baseCharacterIntroductions: [],
       promptTemplates: {
-        characterPromptTemplate: ''{input} {characters_lib_name} {characters_lib_info}'',
-        locationPromptTemplate: ''{input} {locations_lib_name}'',
-        locationRecallPromptTemplate: ''{input} {locations_lib_name} {existing_locations_json}'',
-        clipPromptTemplate: ''{input} {locations_lib_name} {characters_lib_name} {characters_introduction}'',
-        screenplayPromptTemplate: ''{clip_content} {locations_lib_name} {characters_lib_name} {characters_introduction} {clip_id}'',
+        characterPromptTemplate: '{input} {characters_lib_name} {characters_lib_info}',
+        locationPromptTemplate: '{input} {locations_lib_name}',
+        locationRecallPromptTemplate: '{input} {locations_lib_name} {existing_locations_json}',
+        clipPromptTemplate: '{input} {locations_lib_name} {characters_lib_name} {characters_introduction}',
+        screenplayPromptTemplate: '{clip_content} {locations_lib_name} {characters_lib_name} {characters_introduction} {clip_id}',
       },
       runStep,
     })
 
-    expect(actionCalls).toContain(''analyze_locations_recall'')
+    expect(actionCalls).toContain('analyze_locations_recall')
     const names = result.analyzedLocations.map((item) => String(item.name))
-    expect(names).toContain(''药房_夜间'')
-    expect(result.locationsLibName).toContain(''药房_夜间'')
+    expect(names).toContain('药房_夜间')
+    expect(result.locationsLibName).toContain('药房_夜间')
   })
 })

@@ -13,11 +13,6 @@ const prismaMock = vi.hoisted(() => ({
   $transaction: vi.fn(),
 }))
 
-const llmMock = vi.hoisted(() => ({
-  chatCompletion: vi.fn(async () => ({ id: 'completion-1' })),
-  getCompletionContent: vi.fn(() => 'voice-line-json'),
-}))
-
 const helperMock = vi.hoisted(() => ({
   parseVoiceLinesJson: vi.fn(),
   buildStoryboardJson: vi.fn(() => 'storyboard-json'),
@@ -29,7 +24,6 @@ const workerMock = vi.hoisted(() => ({
 }))
 
 vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }))
-vi.mock('@/lib/llm-client', () => llmMock)
 vi.mock('@/lib/llm-observe/internal-stream-context', () => ({
   withInternalLLMStreamCallbacks: vi.fn(async (_callbacks: unknown, fn: () => Promise<unknown>) => await fn()),
 }))
@@ -55,6 +49,12 @@ vi.mock('@/lib/workers/handlers/voice-analyze-helpers', () => ({
 vi.mock('@/lib/prompt-i18n', () => ({
   PROMPT_IDS: { NP_VOICE_ANALYSIS: 'np_voice_analysis' },
   buildPrompt: vi.fn(() => 'voice-analysis-prompt'),
+}))
+vi.mock('@/lib/workers/handlers/resolve-analysis-model', () => ({
+  resolveAnalysisModel: vi.fn(async () => 'llm::analysis-1'),
+}))
+vi.mock('@/lib/ai-runtime', () => ({
+  executeAiTextStep: vi.fn(async () => ({ text: 'voice-line-json' })),
 }))
 
 import { handleVoiceAnalyzeTask } from '@/lib/workers/handlers/voice-analyze'
@@ -90,7 +90,7 @@ describe('worker voice-analyze behavior', () => {
     prismaMock.novelPromotionEpisode.findUnique.mockResolvedValue({
       id: 'episode-1',
       novelPromotionProjectId: 'np-project-1',
-      novelText: '这是可以用于台词分析的文本',
+      novelText: 'This text is ready for voice analysis.',
       storyboards: [
         {
           id: 'storyboard-1',
@@ -104,7 +104,11 @@ describe('worker voice-analyze behavior', () => {
       {
         lineIndex: 1,
         speaker: 'Hero',
-        content: '第一句台词',
+        speakerNameRaw: 'Hero',
+        speakerKind: 'character',
+        lineType: 'dialogue',
+        speakerConfidence: 0.91,
+        content: 'First dialogue line.',
         emotionStrength: 0.7,
         matchedPanel: {
           storyboardId: 'storyboard-1',
@@ -114,7 +118,11 @@ describe('worker voice-analyze behavior', () => {
       {
         lineIndex: 2,
         speaker: 'Narrator',
-        content: '第二句旁白',
+        speakerNameRaw: 'Narrator',
+        speakerKind: 'narrator',
+        lineType: 'narration',
+        speakerConfidence: 0.88,
+        content: 'Second narration line.',
         emotionStrength: 0.5,
       },
     ])
@@ -155,7 +163,7 @@ describe('worker voice-analyze behavior', () => {
     await expect(handleVoiceAnalyzeTask(job)).rejects.toThrow('episodeId is required')
   })
 
-  it('success path -> persists mapped panelId and speaker stats', async () => {
+  it('success path -> persists semantic fields and conservative bindings', async () => {
     const job = buildJob({ episodeId: 'episode-1' })
     const result = await handleVoiceAnalyzeTask(job)
 
@@ -173,10 +181,29 @@ describe('worker voice-analyze behavior', () => {
       episodeId: 'episode-1',
       lineIndex: 1,
       speaker: 'Hero',
-      content: '第一句台词',
+      speakerNameRaw: 'Hero',
+      speakerKind: 'character',
+      lineType: 'dialogue',
+      speakerConfidence: 0.91,
+      boundCharacterId: null,
+      bindingConfidence: null,
+      bindingReason: null,
+      content: 'First dialogue line.',
       matchedPanelId: 'panel-1',
       matchedStoryboardId: 'storyboard-1',
       matchedPanelIndex: 0,
+    }))
+
+    expect(txState.createdRows[1]).toEqual(expect.objectContaining({
+      lineIndex: 2,
+      speaker: 'Narrator',
+      speakerNameRaw: 'Narrator',
+      speakerKind: 'narrator',
+      lineType: 'narration',
+      speakerConfidence: 0.88,
+      boundCharacterId: null,
+      bindingConfidence: null,
+      bindingReason: null,
     }))
   })
 
@@ -185,6 +212,10 @@ describe('worker voice-analyze behavior', () => {
       {
         lineIndex: 1,
         speaker: 'Hero',
+        speakerNameRaw: 'Hero',
+        speakerKind: 'character',
+        lineType: 'dialogue',
+        speakerConfidence: 0.9,
         content: 'bad line',
         emotionStrength: 0.8,
         matchedPanel: {

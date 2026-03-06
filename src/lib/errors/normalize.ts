@@ -104,6 +104,16 @@ function inferCodeFromPrismaCode(prismaCode: string): UnifiedErrorCode {
   return 'INTERNAL_ERROR'
 }
 
+function buildNormalizedDetails(
+  errorDetails: unknown,
+  optionDetails: Record<string, unknown> | null | undefined,
+): NormalizedErrorDetails {
+  return {
+    ...(typeof errorDetails === 'object' && errorDetails ? (errorDetails as Record<string, unknown>) : {}),
+    ...(optionDetails || {}),
+  }
+}
+
 export function normalizeAnyError(input: unknown, options: NormalizeOptions = {}): NormalizedError {
   const fallbackCode = options.fallbackCode || DEFAULT_ERROR_CODE
   const errorLike = (input || {}) as ErrorLike
@@ -154,26 +164,23 @@ export function normalizeAnyError(input: unknown, options: NormalizeOptions = {}
 
   const resolvedCode = resolveUnifiedErrorCode(errorLike.code)
   if (resolvedCode) {
-    return buildNormalizedError(resolvedCode, message, {
-      ...(typeof errorLike.details === 'object' && errorLike.details ? (errorLike.details as Record<string, unknown>) : {}),
-      ...(options.details || {}),
-    }, provider)
+    return buildNormalizedError(resolvedCode, message, buildNormalizedDetails(errorLike.details, options.details), provider)
   }
 
   if (typeof errorLike.status === 'number') {
-    if (errorLike.status === 401) return buildNormalizedError('UNAUTHORIZED', message, options.details, provider)
+    if (errorLike.status === 401) return buildNormalizedError('UNAUTHORIZED', message, buildNormalizedDetails(errorLike.details, options.details), provider)
     if (errorLike.status === 403) {
       if (isUpstreamBlocked403(lowerMessage)) {
-        return buildNormalizedError('EXTERNAL_ERROR', message, options.details, provider)
+        return buildNormalizedError('EXTERNAL_ERROR', message, buildNormalizedDetails(errorLike.details, options.details), provider)
       }
-      return buildNormalizedError('FORBIDDEN', message, options.details, provider)
+      return buildNormalizedError('FORBIDDEN', message, buildNormalizedDetails(errorLike.details, options.details), provider)
     }
-    if (errorLike.status === 404) return buildNormalizedError('NOT_FOUND', message, options.details, provider)
-    if (errorLike.status === 409) return buildNormalizedError('CONFLICT', message, options.details, provider)
-    if (errorLike.status === 422) return buildNormalizedError('SENSITIVE_CONTENT', message, options.details, provider)
-    if (errorLike.status === 429) return buildNormalizedError('RATE_LIMIT', message, options.details, provider)
-    if (errorLike.status === 502 || errorLike.status === 503) return buildNormalizedError('EXTERNAL_ERROR', message, options.details, provider)
-    if (errorLike.status === 504) return buildNormalizedError('GENERATION_TIMEOUT', message, options.details, provider)
+    if (errorLike.status === 404) return buildNormalizedError('NOT_FOUND', message, buildNormalizedDetails(errorLike.details, options.details), provider)
+    if (errorLike.status === 409) return buildNormalizedError('CONFLICT', message, buildNormalizedDetails(errorLike.details, options.details), provider)
+    if (errorLike.status === 422) return buildNormalizedError('SENSITIVE_CONTENT', message, buildNormalizedDetails(errorLike.details, options.details), provider)
+    if (errorLike.status === 429) return buildNormalizedError('RATE_LIMIT', message, buildNormalizedDetails(errorLike.details, options.details), provider)
+    if (errorLike.status === 502 || errorLike.status === 503) return buildNormalizedError('EXTERNAL_ERROR', message, buildNormalizedDetails(errorLike.details, options.details), provider)
+    if (errorLike.status === 504) return buildNormalizedError('GENERATION_TIMEOUT', message, buildNormalizedDetails(errorLike.details, options.details), provider)
   }
 
   const inferredCode = inferCodeFromMessage(lowerMessage)

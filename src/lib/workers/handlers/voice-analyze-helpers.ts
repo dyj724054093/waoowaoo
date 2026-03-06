@@ -15,12 +15,60 @@ export interface VoiceLineMatchedPanel {
   panelIndex?: number
 }
 
+export type VoiceLineType = 'dialogue' | 'narration' | 'inner_thought' | 'quoted_speech' | 'unknown'
+export type VoiceSpeakerKind = 'character' | 'narrator' | 'unknown'
+
 export interface VoiceLinePayload {
   lineIndex?: number
   speaker?: string
+  speakerNameRaw?: string
+  speakerKind?: VoiceSpeakerKind
+  lineType?: VoiceLineType
+  speakerConfidence?: number
   content?: string
   emotionStrength?: number
   matchedPanel?: VoiceLineMatchedPanel | null
+}
+
+const VOICE_LINE_TYPES = new Set<VoiceLineType>([
+  'dialogue',
+  'narration',
+  'inner_thought',
+  'quoted_speech',
+  'unknown',
+])
+
+const VOICE_SPEAKER_KINDS = new Set<VoiceSpeakerKind>([
+  'character',
+  'narrator',
+  'unknown',
+])
+
+function normalizeText(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const text = value.trim()
+  return text ? text : undefined
+}
+
+function normalizeVoiceLineType(value: unknown): VoiceLineType {
+  if (typeof value === 'string' && VOICE_LINE_TYPES.has(value as VoiceLineType)) {
+    return value as VoiceLineType
+  }
+  return 'unknown'
+}
+
+function normalizeVoiceSpeakerKind(value: unknown): VoiceSpeakerKind {
+  if (typeof value === 'string' && VOICE_SPEAKER_KINDS.has(value as VoiceSpeakerKind)) {
+    return value as VoiceSpeakerKind
+  }
+  return 'unknown'
+}
+
+function normalizeConfidence(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return 0
+  }
+  return Math.min(1, Math.max(0, value))
 }
 
 function parseVoiceLinePayload(value: unknown): VoiceLinePayload | null {
@@ -30,9 +78,16 @@ function parseVoiceLinePayload(value: unknown): VoiceLinePayload | null {
     record.matchedPanel && typeof record.matchedPanel === 'object'
       ? (record.matchedPanel as Record<string, unknown>)
       : null
+  const speaker = normalizeText(record.speaker)
+  const speakerNameRaw = normalizeText(record.speakerNameRaw) || speaker
+
   return {
     lineIndex: typeof record.lineIndex === 'number' ? record.lineIndex : undefined,
-    speaker: typeof record.speaker === 'string' ? record.speaker : undefined,
+    speaker: speaker || speakerNameRaw,
+    speakerNameRaw,
+    speakerKind: normalizeVoiceSpeakerKind(record.speakerKind),
+    lineType: normalizeVoiceLineType(record.lineType),
+    speakerConfidence: normalizeConfidence(record.speakerConfidence),
     content: typeof record.content === 'string' ? record.content : undefined,
     emotionStrength: typeof record.emotionStrength === 'number' ? record.emotionStrength : undefined,
     matchedPanel: matchedPanelRaw
@@ -67,7 +122,7 @@ export function buildStoryboardJson(storyboards: StoryboardLike[]): string {
   }
 
   if (panelsData.length === 0) {
-    return '无分镜数据'
+    return '?????'
   }
 
   return JSON.stringify(panelsData, null, 2)

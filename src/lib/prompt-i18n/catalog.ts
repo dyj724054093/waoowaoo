@@ -55,7 +55,7 @@ export const PROMPT_CATALOG: Record<PromptId, PromptCatalogEntry> = {
   },
   [PROMPT_IDS.NP_AGENT_STORYBOARD_DETAIL]: {
     pathStem: 'novel-promotion/agent_storyboard_detail',
-    variableKeys: ['panels_json', 'characters_age_gender', 'locations_description'],
+    variableKeys: ['panels_json', 'characters_age_gender', 'characters_profile_summary', 'locations_description'],
   },
   [PROMPT_IDS.NP_AGENT_STORYBOARD_INSERT]: {
     pathStem: 'novel-promotion/agent_storyboard_insert',
@@ -161,6 +161,6 @@ export const PROMPT_CATALOG: Record<PromptId, PromptCatalogEntry> = {
   },
   [PROMPT_IDS.NP_SEEDANCE_DETAIL]: {
     pathStem: 'novel-promotion/seedance_storyboard_detail',
-    variableKeys: ['panels_json', 'characters_age_gender', 'locations_description'],
+    variableKeys: ['panels_json', 'characters_age_gender', 'characters_profile_summary', 'locations_description'],
   },
 }

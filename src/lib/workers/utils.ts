@@ -232,7 +232,12 @@ export async function resolveImageSourceFromGeneration(
     }),
   )
   if (!result.success) {
-    throw new Error(result.error || 'Image generation failed')
+    throw {
+      message: result.error || 'Image generation failed',
+      ...(typeof result.status === 'number' ? { status: result.status } : {}),
+      ...(typeof result.provider === 'string' ? { provider: result.provider } : {}),
+      ...(typeof result.details === 'object' && result.details ? { details: result.details } : {}),
+    }
   }
 
   if (result.imageUrl) {

@@ -106,6 +106,89 @@ describe('OpenAICompatibleImageGenerator', () => {
     expect(Array.isArray((call[0] as { image?: unknown }).image)).toBe(true)
   })
 
+  it('preserves provider error context for images.edit failures', async () => {
+    openAIState.edit.mockRejectedValueOnce({
+      message: '500 Upstream 429: {"error":{"message":"Too many requests"}}',
+      status: 429,
+      headers: {
+        'x-request-id': 'req-edit-1',
+      },
+      error: {
+        code: 'rate_limit_exceeded',
+      },
+    })
+
+    const generator = new OpenAICompatibleImageGenerator('gpt-image-1', 'openai-compatible:oa-1')
+    const result = await generator.generate({
+      userId: 'user-1',
+      prompt: 'edit this image',
+      referenceImages: ['data:image/png;base64,QQ=='],
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('Too many requests')
+    expect(result.status).toBe(429)
+    expect(result.provider).toBe('openai-compatible:oa-1')
+    expect(result.details).toMatchObject({
+      operation: 'images.edit',
+      model: 'gpt-image-1',
+      providerId: 'openai-compatible:oa-1',
+      requestId: 'req-edit-1',
+      upstreamError: {
+        code: 'rate_limit_exceeded',
+      },
+    })
+    expect(openAIState.edit).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not retry images.edit when provider returns rate limit', async () => {
+    openAIState.edit.mockRejectedValueOnce(new Error('500 Upstream 429: {"error":{"code":8,"message":"Too many requests","details":[]}}'))
+
+    const generator = new OpenAICompatibleImageGenerator('gpt-image-1', 'openai-compatible:oa-1')
+    const result = await generator.generate({
+      userId: 'user-1',
+      prompt: 'edit this image',
+      referenceImages: ['data:image/png;base64,QQ=='],
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('429')
+    expect(openAIState.edit).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not retry images.generate when provider returns rate limit', async () => {
+    openAIState.generate.mockRejectedValueOnce(new Error('429 Too many requests'))
+
+    const generator = new OpenAICompatibleImageGenerator('gpt-image-1', 'openai-compatible:oa-1')
+    const result = await generator.generate({
+      userId: 'user-1',
+      prompt: 'draw a lighthouse',
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('429')
+    expect(openAIState.generate).toHaveBeenCalledTimes(1)
+  })
+
+  it('retries transient edit errors once before succeeding', async () => {
+    openAIState.edit
+      .mockRejectedValueOnce(new Error('socket hang up'))
+      .mockResolvedValueOnce({
+        data: [{ b64_json: 'ZWRpdA==' }],
+      })
+
+    const generator = new OpenAICompatibleImageGenerator('gpt-image-1', 'openai-compatible:oa-1')
+    const result = await generator.generate({
+      userId: 'user-1',
+      prompt: 'edit this image',
+      referenceImages: ['data:image/png;base64,QQ=='],
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.imageBase64).toBe('ZWRpdA==')
+    expect(openAIState.edit).toHaveBeenCalledTimes(2)
+  })
+
   it('fails explicitly on unsupported option values', async () => {
     const generator = new OpenAICompatibleImageGenerator('gpt-image-1', 'openai-compatible:oa-1')
     const result = await generator.generate({

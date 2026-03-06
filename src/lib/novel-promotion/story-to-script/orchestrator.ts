@@ -92,51 +92,93 @@ function applyTemplate(template: string, replacements: Record<string, string>) {
   return next
 }
 
-function parseJSONObject(responseText: string): Record<string, unknown> {
-  let cleaned = responseText.trim()
-  cleaned = cleaned
+function stripJsonCodeFence(responseText: string): string {
+  return responseText
+    .trim()
     .replace(/^```json\s*/i, '')
     .replace(/^```\s*/, '')
     .replace(/\s*```$/g, '')
     .trim()
+}
 
-  const firstBrace = cleaned.indexOf('{')
-  const lastBrace = cleaned.lastIndexOf('}')
-  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-    cleaned = cleaned.slice(firstBrace, lastBrace + 1)
+function extractBalancedJsonSegment(input: string, opening: '{' | '['): string | null {
+  const closing = opening === '{' ? '}' : ']'
+  const startIndex = input.indexOf(opening)
+  if (startIndex === -1) return null
+
+  let depth = 0
+  let inString = false
+  let escaped = false
+
+  for (let i = startIndex; i < input.length; i += 1) {
+    const ch = input[i]
+
+    if (inString) {
+      if (escaped) {
+        escaped = false
+        continue
+      }
+      if (ch === '\\') {
+        escaped = true
+        continue
+      }
+      if (ch === '"') {
+        inString = false
+      }
+      continue
+    }
+
+    if (ch === '"') {
+      inString = true
+      continue
+    }
+
+    if (ch === opening) {
+      depth += 1
+      continue
+    }
+
+    if (ch === closing) {
+      depth -= 1
+      if (depth === 0) {
+        return input.slice(startIndex, i + 1)
+      }
+    }
   }
 
-  try {
-    return JSON.parse(cleaned) as Record<string, unknown>
-  } catch { /* continue */ }
+  return null
+}
 
-  try {
-    return JSON.parse(escapeControlCharsInJsonStrings(cleaned)) as Record<string, unknown>
-  } catch { /* continue */ }
+function parseWithJsonRepairs(input: string): unknown {
+  let lastError: unknown = null
+  for (const repair of [identity, escapeControlCharsInJsonStrings, fixUnescapedQuotesInJson]) {
+    try {
+      return JSON.parse(repair(input))
+    } catch (error) {
+      lastError = error
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('JSON parse failed')
+}
 
-  return JSON.parse(fixUnescapedQuotesInJson(cleaned)) as Record<string, unknown>
+function parseJSONObject(responseText: string): Record<string, unknown> {
+  const cleaned = stripJsonCodeFence(responseText)
+  const candidate = extractBalancedJsonSegment(cleaned, '{') || cleaned
+  const parsed = parseWithJsonRepairs(candidate)
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Invalid JSON object format')
+  }
+  return parsed as Record<string, unknown>
 }
 
 function parseClipArray(responseText: string): Record<string, unknown>[] {
-  let cleaned = responseText.trim()
-  cleaned = cleaned
-    .replace(/^```json\s*/i, '')
-    .replace(/^```\s*/, '')
-    .replace(/\s*```$/g, '')
-    .trim()
+  const cleaned = stripJsonCodeFence(responseText)
 
-  // Try parsing as array with progressive repair
-  const firstBracket = cleaned.indexOf('[')
-  const lastBracket = cleaned.lastIndexOf(']')
-  if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
-    const arrayStr = cleaned.slice(firstBracket, lastBracket + 1)
-    for (const repair of [identity, escapeControlCharsInJsonStrings, fixUnescapedQuotesInJson]) {
-      try {
-        const parsed = JSON.parse(repair(arrayStr))
-        if (Array.isArray(parsed)) {
-          return parsed.filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
-        }
-      } catch { /* try next repair */ }
+  const arraySegment = extractBalancedJsonSegment(cleaned, '[')
+  if (arraySegment) {
+    const parsed = parseWithJsonRepairs(arraySegment)
+    if (Array.isArray(parsed)) {
+      return parsed.filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
     }
   }
 
@@ -271,31 +313,7 @@ function fixUnescapedQuotesInJson(input: string): string {
 }
 
 function parseScreenplayObject(responseText: string): Record<string, unknown> {
-  let cleaned = responseText.trim()
-  cleaned = cleaned
-    .replace(/^```json\s*/i, '')
-    .replace(/^```\s*/, '')
-    .replace(/\s*```$/g, '')
-    .trim()
-
-  const firstBrace = cleaned.indexOf('{')
-  const lastBrace = cleaned.lastIndexOf('}')
-  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-    cleaned = cleaned.slice(firstBrace, lastBrace + 1)
-  }
-
-  // Level 1: direct parse
-  try {
-    return JSON.parse(cleaned) as Record<string, unknown>
-  } catch { /* continue */ }
-
-  // Level 2: escape control characters
-  try {
-    return JSON.parse(escapeControlCharsInJsonStrings(cleaned)) as Record<string, unknown>
-  } catch { /* continue */ }
-
-  // Level 3: fix unescaped interior double quotes + control chars
-  return JSON.parse(fixUnescapedQuotesInJson(cleaned)) as Record<string, unknown>
+  return parseJSONObject(responseText)
 }
 
 function asString(value: unknown): string {
